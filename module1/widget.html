@@ -60,10 +60,18 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      border: 2px solid rgba(255, 60, 60, 0.85);
+      border: 2px solid rgba(30, 255, 30, 0.85);
       background: transparent;
       pointer-events: none;
       z-index: 5;
+    }
+    #overlay-label {
+      position: absolute;
+      bottom: +12px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      color: rgba(20, 20, 20, 0.9);
     }
 
     #summary {
@@ -125,7 +133,7 @@
 
 <div id="map"></div>
 <div id="map-hillshade"></div>
-<div id="overlay"></div>
+<div id="overlay"><div id="overlay-label">Relief is for preview only, print quality will exceed this</div></div>
 
 <div id="controls">
   <div id="search-wrapper">
@@ -178,6 +186,13 @@
     const px = (area_km * 1000) / mpp;
     overlay.style.width  = px + 'px';
     overlay.style.height = px + 'px';
+    const label = document.getElementById('overlay-label');
+    if (px < 260) {
+      label.style.visibility = 'hidden';
+    } else {
+      label.style.visibility = 'visible';
+      label.style.fontSize = '11px';
+    }
   }
 
   // Returns zoom level where the selection square fills ~65% of shortest viewport dim
@@ -222,7 +237,7 @@
       btn.classList.add('active');
       area_km = parseInt(btn.dataset.km, 10);
       updateOverlay();
-      if (!exploreMode) autoZoom();
+      autoZoom();
     });
   });
 

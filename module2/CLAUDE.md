@@ -1,6 +1,20 @@
 # Module 2 — DEM Data Acquisition
 
-**STATUS: COMPLETE.**
+**STATUS: COMPLETE — but requires fix before use (Shared Drive compatibility).**
+
+## ⚠ Known Issue — Must Fix Before Running
+
+acquire.py was written assuming a regular My Drive folder.
+Orders now live in a Shared Drive. The following changes are needed:
+
+All service.files().list() and related calls must add:
+- supportsAllDrives=True
+- includeItemsFromAllDrives=True
+- driveId=<from GDRIVE_ORDERS_DRIVE_ID env var>
+- corpora='drive'
+
+Also add GDRIVE_ORDERS_DRIVE_ID to env var reads at startup.
+Do a targeted fix — do not rebuild acquire.py from scratch.
 
 ## Main Script
 
@@ -8,9 +22,9 @@
 
 ## CRITICAL RULES
 
-- **Never import osgeo directly.** All GDAL calls via QGIS Python subprocess.
-- **Never write raw_dem.tif to Google Drive.** Local only.
-- **Print clear plain-English error messages. Never fail silently.**
+- Never import osgeo directly. All GDAL calls via QGIS Python subprocess.
+- Never write raw_dem.tif to Google Drive. Local only.
+- Print clear plain-English error messages. Never fail silently.
 
 ## QGIS Python Executable
 
@@ -23,38 +37,35 @@ C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat
 - Google Cloud project: terraintool
 - Service account: terraintool-orders@terraintool.iam.gserviceaccount.com
 - Credentials: E:\TerrainTool\credentials\gdrive_key.json
-- Env vars: GDRIVE_KEY_PATH, OPENTOPO_API_KEY, CDSE_S3_KEY, CDSE_S3_SECRET
-- CDSE_S3_KEY and CDSE_S3_SECRET are set but currently unused (GLO-10 disabled)
+- Shared Drive: 'orders' — ID from GDRIVE_ORDERS_DRIVE_ID env var
+- Env vars: GDRIVE_KEY_PATH, OPENTOPO_API_KEY, CDSE_S3_KEY, CDSE_S3_SECRET, GDRIVE_ORDERS_DRIVE_ID
 
 ⚠ Copernicus S3 credentials expire. Regenerate at s3-credentials.dataspace.copernicus.eu.
-  Auth failure on any future GLO-10 work = keys need regenerating.
 
-## Dataset Selection
-
-**All orders currently use GLO-30 via OpenTopography regardless of location.**
-
-GLO-10 routing logic exists in acquire.py and eea39_bbox.py but is commented out.
-Reason: EEA-10 (10m DEM) requires a Public Authority Copernicus account.
-Standard free accounts do not have access.
-
-## Files
+## File Locations
 
 ```
-acquire.py       main script — Drive auth, pending detection, routing, orchestration
-dem_download.py  GLO-30 download and gdal_fillnodata
-eea39_bbox.py    EEA-39 check (used for routing, GLO-10 branch commented out)
-setup.py         done
-requirements.txt google-api-python-client, google-auth, requests, boto3 (no gdal)
+Google Shared Drive:  orders/{order_number}/params.json
+Local:                E:\TerrainTool\orders\{order_number}\  (raw_dem.tif, etc.)
 ```
+
+## Pending Detection
+
+params.json on Shared Drive AND raw_dem.tif absent locally.
+
+## Dataset
+
+All orders use GLO-30 via OpenTopography. eea39_bbox.py exists for future
+high-res routing but its branch in acquire.py is commented out and not active.
 
 ## GLO-30 Pipeline
 
 1. OpenTopography API → GeoTIFF download
-2. Validate: check first 4 bytes for TIFF magic number
-3. gdal_translate: COG → standard GeoTIFF (OpenTopography returns COG format)
+2. Validate first 4 bytes for TIFF magic number
+3. gdal_translate: COG → standard GeoTIFF
 4. gdal_fillnodata: via QGIS subprocess, inline -c argument
 
 ## Operational Note
 
-Move completed orders to orders_complete Drive folder manually when volume grows.
-Script only scans orders/ — moved orders invisible to it with no code changes needed.
+Move completed orders to orders_complete on Shared Drive manually.
+Script only scans orders/ — moved orders invisible to it with no code changes.

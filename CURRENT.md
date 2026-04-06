@@ -1,73 +1,66 @@
 # Current Work State
 
 ## Active Module
-**Module 1 — Stage 3 (cloud deployment to Railway/Render)**
+**Module 1 — Stage 4 (Shopify integration) + Module 2 Shared Drive fix**
 
 ## Status
-Stage 1 complete (4 files). Stage 2 complete (4 files).
+Operator tool Phases 1–3 complete. Module 1 Stage 4 next.
+Module 2 requires Shared Drive fix before Download DEM works end-to-end.
 
 ## What Is Built
 
 ### Module 4 — COMPLETE
-- Blender 4.5 LTS addon: Bake Full Res + Add Base and Export
-- Outputs: displaced.obj, simplified.obj, final.stl
+- Blender 4.5 LTS addon: single "Bake & Export" button (runs full pipeline in sequence)
+- Panel unified — single layout, two separate print height lines
 
 ### Module 3 — COMPLETE
 - Extends terrain_export addon, same N-panel tab
-- resample.py: two-pass warp, dstNodata=-9999.0, edge fill (load-bearing)
+- resample.py: two-pass warp, dstNodata=-9999.0, edge fill (load-bearing fixes)
+- TERRAIN_OT_LoadOrder: accepts optional folder property for external launch
+- Single "Bake & Export" button replaces three separate buttons
 
-### Module 2 — COMPLETE
-- GLO-30 via OpenTopography. GLO-10 disabled (Public Authority account required).
-- Drive: params.json only. Local: E:\TerrainTool\orders\{order_number}\
+### Module 2 — COMPLETE (pending Shared Drive fix)
+- GLO-30 via OpenTopography working
+- ⚠ acquire.py needs Shared Drive API parameters before Download DEM button works
+  Add to all service.files() calls: supportsAllDrives=True, includeItemsFromAllDrives=True,
+  driveId=GDRIVE_ORDERS_DRIVE_ID, corpora='drive'
 
-### Module 1 — Stage 2 complete
-Stage 1 files: widget.html, hillshade.js, search.js, selection.js
-Stage 2 files: webhook.py, test_webhook.py, requirements.txt, setup.py
+### Module 1 — Stages 1–3 complete, Stage 4 next
+- widget.html: green border overlay, disclaimer label, unconditional size-change zoom
+- webhook.py deployed on Railway, Shared Drive integration working
+- Stage 4: Shopify embed (planning via private admin page for dummy orders first)
 
-Stage 1 key details:
-- Two stacked Mapbox instances: bottom basemap, top hillshade-only
-- Hillshade clipped via CSS clip-path: inset() (not Mapbox layer masking)
-- Dual-source search: Mapbox + Nominatim in parallel (Promise.allSettled)
-- Rotation disabled (fixes hillshade clip desync on mobile)
-- isProgrammaticMove guard working
-- Confirmation: Select → summary panel → Confirm (logs JSON) / Cancel
+### Operator Tool — Phases 1–3 complete
+Location: E:\TerrainTool\operator_tool\
+Files: main.py, app.py, settings_tab.py, orders_tab.py, console.py, config.py
+- Settings tab: all paths + API keys → config.json
+- Orders tab: scans local orders, colour-coded status badges, Download DEM + Open in Blender buttons
+- Console pane: fixed-height, colour-coded, thread-safe
+- Blender launch: subprocess.Popen with --python-expr, calls terrain.load_order directly
+- Download DEM: runs acquire.py in background thread (blocked by Module 2 Shared Drive fix)
 
-Stage 2 key details:
-- POST /webhook responds 200 immediately; Drive write is async (threading)
-- Drive auth: GDRIVE_KEY_JSON (cloud) takes priority over GDRIVE_KEY_PATH (local)
-- Writes params.json to Drive orders/{order_number}/; overwrites if exists
-- Writes order.txt locally to E:\TerrainTool\orders\{order_number}\
-- Logs Mapbox Static Images URL for order confirmation email
-- test_webhook.py sends fake Shopify payload to localhost:5000 for local testing
+## What To Build Next
 
-## What To Build Next — Stage 3
+Priority 1: Module 2 Shared Drive fix (unlocks Download DEM button)
+Priority 2: Module 1 Stage 4 — Shopify integration (private admin page approach first)
 
-Deploy webhook.py to Railway or Render.
-Before deploying:
-- Test on mobile now rotation is disabled — confirm hillshade clip tracks correctly
-- Test natural landmark search (Everest, Mont Blanc) — confirm Nominatim results appear
-- Manually verify Shopify line item properties survive checkout end-to-end
-- Run test_webhook.py against local webhook.py to confirm full local flow
+Operator tool remaining:
+- Status auto-refresh after Blender closes
+- Manual order entry
+- Archive tab
+- PyInstaller .exe packaging
 
-## Decisions Made
+## Key Decisions Made
 
-- Stage 1 split into 4 files (not single HTML)
-- Hillshade: two stacked map instances + CSS clip-path (Mapbox clip layer doesn't support hillshade in v3.3)
-- Dual-source search: Mapbox + Nominatim (for mountains/natural features)
-- Rotation disabled: dragRotate, touchPitch, touchZoomRotate.disableRotation
-- Browser zoom locked via viewport meta
-- GDRIVE_KEY_JSON for credential handling (not file path)
+- Single "Bake & Export" button in Blender addon (replaces 3 separate buttons)
+- Panel unified into single layout (no more two-box split)
+- Print height shown as two separate lines (terrain height / with base)
+- Green border on selection square (was red)
+- Disclaimer label inside square, hidden when too small
+- Size-change auto-zoom is unconditional (explore_mode check removed)
+- Blender launch: --python-expr passes order folder directly, bypasses file browser
+- active_panel_category is read-only in Blender 4.5 — sidebar shown via timer workaround
+- REGISTER removed from LoadOrder bl_options (suppresses popup)
 
 ---
 *Update this file at the end of every Claude Code session.*
-
-## Future Architecture Notes (not blocking current work)
-
-### High-Res Dataset Expansion
-- Coverage polygons derived from tile index (not country boundary) — handles partial coverage + water tiles correctly
-- Widget uses Turf.js union of all coverage polygons to determine available sizes
-- Cross-border orders (bbox spans two datasets): flag as needs_manual_processing, operator handles manually
-- DO NOT fall back to GLO-30 silently on a paid high-res order
-- processing_status field to be added to params.json when LiDAR is implemented
-- Dataset routing to be refactored from if/else to priority-ordered selector when second high-res source is added
-- Swedish LiDAR: CC0 license confirmed for commercial use. Markhöjdmodell license TBC (likely DTM anyway).

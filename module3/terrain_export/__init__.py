@@ -37,6 +37,7 @@ from bpy.types import Panel, Operator, PropertyGroup
 from . import bake
 from . import base_export
 from . import refinement
+from . import preview
 
 
 # ── Scene-level property group ────────────────────────────────────────────────
@@ -108,18 +109,19 @@ class TerrainExportSettings(PropertyGroup):
     )
 
 
-# ── Operator: Bake Full Res ───────────────────────────────────────────────────
+# ── Operator: Bake & Export ───────────────────────────────────────────────────
 
-class TERRAIN_OT_BakeFullRes(Operator):
-    """Subdivide a plane, apply displacement from resampled.tif, export OBJ files"""
+class TERRAIN_OT_BakeAndExport(Operator):
+    """Resample DEM, bake terrain mesh, add base, and export STL — all in one step"""
 
-    bl_idname  = "terrain.bake_full_res"
-    bl_label   = "Bake Full Res"
+    bl_idname  = "terrain.bake_and_export"
+    bl_label   = "Bake & Export"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        settings = context.scene.terrain_export_settings
+        settings     = context.scene.terrain_export_settings
         order_folder = bpy.path.abspath(settings.order_folder).rstrip("\\/")
+        wm           = context.window_manager
 
         if not order_folder:
             self.report({"ERROR"}, "No order loaded. Click 'Load Order' first.")
@@ -128,40 +130,62 @@ class TERRAIN_OT_BakeFullRes(Operator):
             self.report({"ERROR"}, f"Order folder not found:\n  {order_folder}")
             return {"CANCELLED"}
 
+        params_path = os.path.join(order_folder, "params.json")
+        try:
+            with open(params_path, "r", encoding="utf-8") as f:
+                params = json.load(f)
+        except Exception as e:
+            self.report({"ERROR"}, f"Could not read params.json:\n{e}")
+            return {"CANCELLED"}
+
+        wm.progress_begin(0, 3)
+
+        # ── Step 1: Resample DEM at full subdivision_level resolution ─────────
+        self.report({"INFO"}, "Bake & Export (1/3): resampling DEM...")
+        wm.progress_update(0)
+
+        resolution = int(params.get("subdivision_level", 1024))
+        bbox       = params.get("bbox", {})
+        result = preview.run_resample(
+            order_folder,
+            os.path.join(order_folder, "resampled.tif"),
+            resolution,
+            settings.min_clamp, settings.max_clamp, settings.gamma,
+            bbox, self.report,
+        )
+        if result is None:
+            wm.progress_end()
+            return {"CANCELLED"}
+
+        wm.progress_update(1)
+
+        # ── Step 2: Bake terrain mesh → displaced.obj + simplified.obj ────────
+        self.report({"INFO"}, "Bake & Export (2/3): baking terrain mesh...")
         ok = bake.run_bake(order_folder, self.report, context)
-        if ok:
-            # Hide the preview mesh now that the full-resolution mesh exists
-            preview_obj = bpy.data.objects.get("TerrainPreview")
-            if preview_obj:
-                preview_obj.hide_set(True)
-        return {"FINISHED"} if ok else {"CANCELLED"}
-
-
-# ── Operator: Add Base and Export ─────────────────────────────────────────────
-
-class TERRAIN_OT_AddBaseAndExport(Operator):
-    """Add a flat base to TerrainMesh and export as final.stl"""
-
-    bl_idname  = "terrain.add_base_and_export"
-    bl_label   = "Add Base and Export"
-    bl_options = {"REGISTER", "UNDO"}
-
-    def execute(self, context):
-        settings = context.scene.terrain_export_settings
-        order_folder = bpy.path.abspath(settings.order_folder).rstrip("\\/")
-
-        if not order_folder:
-            self.report({"ERROR"}, "No order loaded. Click 'Load Order' first.")
-            return {"CANCELLED"}
-        if not os.path.isdir(order_folder):
-            self.report({"ERROR"}, f"Order folder not found:\n  {order_folder}")
+        if not ok:
+            wm.progress_end()
             return {"CANCELLED"}
 
+        preview_obj = bpy.data.objects.get("TerrainPreview")
+        if preview_obj:
+            preview_obj.hide_set(True)
+
+        wm.progress_update(2)
+
+        # ── Step 3: Add base and export STL ───────────────────────────────────
+        self.report({"INFO"}, "Bake & Export (3/3): adding base and exporting STL...")
         ok = base_export.run_add_base_and_export(
             order_folder, settings.base_thickness_mm, settings.print_size_mm, self.report
         )
-        return {"FINISHED"} if ok else {"CANCELLED"}
+        if not ok:
+            wm.progress_end()
+            return {"CANCELLED"}
 
+        wm.progress_update(3)
+        wm.progress_end()
+
+        self.report({"INFO"}, "Bake & Export complete — final.stl written.")
+        return {"FINISHED"}
 
 
 # ── Panel ─────────────────────────────────────────────────────────────────────
@@ -176,99 +200,56 @@ class TERRAIN_PT_ExportPanel(Panel):
     bl_category    = "Terrain Export"
 
     def draw(self, context):
-        layout = self.layout
+        layout   = self.layout
         settings = context.scene.terrain_export_settings
 
-        # ── Refinement section ─────────────────────────────────────────────
-        box = layout.box()
-        box.label(text="Refinement", icon="SETTINGS")
-        box.operator("terrain.load_order", icon="FILE_FOLDER")
-
-        # Show the active order name once an order has been loaded
+        # Load Order button, or order name + checkmark once an order is loaded
         if settings.order_folder:
             order_name = os.path.basename(settings.order_folder.rstrip("\\/"))
-            box.label(text=f"Order: {order_name}", icon="CHECKMARK")
+            layout.label(text=order_name, icon="CHECKMARK")
+        else:
+            layout.operator("terrain.load_order", icon="FILE_FOLDER")
 
-        box.separator()
-
-        # Metre equivalents for clamp sliders (only shown once elevation is known)
+        # Elevation range and print height labels — only shown once elevation is known
         elev_range = settings.elevation_max_m - settings.elevation_min_m
         has_elev   = elev_range > 0
         if has_elev:
-            box.label(
-                text=f"Elev: {settings.elevation_min_m:.0f}–{settings.elevation_max_m:.0f} m",
+            layout.label(
+                text=f"Elevation: {settings.elevation_min_m:.0f}–{settings.elevation_max_m:.0f} m",
                 icon="INFO",
             )
-            # Max printed terrain height = displacement_scale × print_size_mm / 10 mm
-            # (displacement is 1 Blender unit per scale unit on a 10-unit plane,
-            #  then uniformly scaled to print_size_mm × print_size_mm)
-            max_h_mm    = settings.displacement_scale * settings.print_size_mm / 10.0
-            total_h_mm  = max_h_mm + settings.base_thickness_mm
-            box.label(
-                text=f"Print height: {max_h_mm/10:.1f} cm  ({total_h_mm/10:.1f} cm with base)",
-                icon="BLANK1",
-            )
+            max_h_mm   = settings.displacement_scale * settings.print_size_mm / 10.0
+            total_h_mm = max_h_mm + settings.base_thickness_mm
+            layout.label(text=f"Print height: {max_h_mm:.1f} mm", icon="BLANK1")
+            layout.label(text=f"Print height with base: {total_h_mm:.1f} mm", icon="BLANK1")
 
-        row = box.row(align=True)
+        layout.prop(settings, "print_size_mm")
+        layout.prop(settings, "base_thickness_mm")
+
+        row = layout.row(align=True)
         row.prop(settings, "min_clamp", slider=True)
         if has_elev:
-            row.label(
-                text=f"{settings.min_clamp * elev_range + settings.elevation_min_m:.0f} m"
-            )
+            row.label(text=f"{settings.min_clamp * elev_range + settings.elevation_min_m:.0f} m")
 
-        row = box.row(align=True)
+        row = layout.row(align=True)
         row.prop(settings, "max_clamp", slider=True)
         if has_elev:
-            row.label(
-                text=f"{settings.max_clamp * elev_range + settings.elevation_min_m:.0f} m"
-            )
+            row.label(text=f"{settings.max_clamp * elev_range + settings.elevation_min_m:.0f} m")
 
-        box.prop(settings, "gamma",              slider=True)
-        box.prop(settings, "displacement_scale", slider=True)
-        box.separator()
-        box.operator("terrain.save_settings",  icon="FILE_TICK")
-        box.operator("terrain.bake_resampled", icon="RENDER_STILL")
+        layout.prop(settings, "gamma",              slider=True)
+        layout.prop(settings, "displacement_scale", slider=True)
 
         layout.separator()
-
-        # ── Full Resolution section ────────────────────────────────────────
-        fbox = layout.box()
-        fbox.label(text="Full Resolution", icon="MESH_GRID")
-
-        col = fbox.column(align=True)
-        col.label(text="Print Settings:")
-        col.prop(settings, "print_size_mm")
-        col.prop(settings, "base_thickness_mm")
-
-        fbox.separator()
-
-        col = fbox.column(align=True)
-        col.label(text="Step 1 — Build mesh from GeoTIFF:")
-        col.operator("terrain.bake_full_res", icon="MESH_GRID")
-
-        fbox.separator()
-
-        col = fbox.column(align=True)
-        col.label(text="Step 2 — Add base and export STL:")
-        col.operator("terrain.add_base_and_export", icon="EXPORT")
-
-        fbox.separator()
-
-        terrain_obj = bpy.data.objects.get("TerrainMesh")
-        if terrain_obj:
-            tri_count = sum(len(p.vertices) - 2 for p in terrain_obj.data.polygons)
-            fbox.label(text=f"TerrainMesh: {tri_count:,} triangles", icon="INFO")
-        else:
-            fbox.label(text="No TerrainMesh in scene yet", icon="QUESTION")
+        layout.operator("terrain.save_settings",    icon="FILE_TICK")
+        layout.operator("terrain.bake_and_export",  icon="RENDER_STILL")
 
 
 # ── Registration ──────────────────────────────────────────────────────────────
 
 CLASSES = [
     TerrainExportSettings,
-    TERRAIN_OT_BakeFullRes,
-    TERRAIN_OT_AddBaseAndExport,
-    *refinement.CLASSES,   # LoadOrder, BakeResampled, SaveSettings
+    TERRAIN_OT_BakeAndExport,
+    *refinement.CLASSES,   # LoadOrder, SaveSettings
     TERRAIN_PT_ExportPanel,
 ]
 
