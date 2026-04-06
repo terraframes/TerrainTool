@@ -1,0 +1,19 @@
+# Credentials — never commit these
+credentials/
+gdrive_key.json
+*.json.key
+
+# Setup completion markers
+setup_complete.txt
+
+# Local order data
+orders/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Environment files
+.env

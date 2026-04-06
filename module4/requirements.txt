@@ -1,0 +1,2 @@
+# Module 4 has no pip dependencies.
+# The Blender addon uses only Blender's bundled Python (OIIO for TIF loading).

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -3.11 setup.py)",
+      "Bash(py -3.11 -c \"import zipfile; z=zipfile.ZipFile\\(''e:/TerrainTool/module4/terrain_export.zip''\\); print\\(''\\\\n''.join\\(z.namelist\\(\\)\\)\\)\")",
+      "Bash(py -3.11 -c \":*)",
+      "Bash(python setup.py)",
+      "WebFetch(domain:docs.mapbox.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "qgis_python": "C:\\Program Files\\QGIS 3.44.8\\bin\\python-qgis-ltr.bat",
+  "_note": "Path to the QGIS Python interpreter that has GDAL available. Used when calling resample.py via subprocess. Update this if QGIS is installed at a different location."
+}
