@@ -8,7 +8,7 @@ Then in a second terminal: python test_webhook.py
 import requests
 import json
 
-WEBHOOK_URL = "http://terraintool-production.up.railway.app/webhook"
+WEBHOOK_URL = "https://terraintool-production.up.railway.app/webhook"
 
 payload = {
     "order_number": 99001,
