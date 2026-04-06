@@ -73,10 +73,37 @@
 
       lockMap();
 
-      document.getElementById('summary-confirm-btn').addEventListener('click', function () {
-        console.log('Order confirmed');
-        console.log(JSON.stringify(lastPayload, null, 2));
-      });
+      ddocument.getElementById('summary-confirm-btn').addEventListener('click', function () {
+  // Build a Shopify-shaped payload matching what webhook.py expects
+  var shopifyPayload = {
+    order_number: 'TEST-' + Date.now(),
+    line_items: [{
+      properties: [
+        { name: 'min_lat', value: String(lastPayload.bbox.min_lat) },
+        { name: 'max_lat', value: String(lastPayload.bbox.max_lat) },
+        { name: 'min_lon', value: String(lastPayload.bbox.min_lon) },
+        { name: 'max_lon', value: String(lastPayload.bbox.max_lon) },
+        { name: 'area_km', value: String(lastPayload.area_km) }
+      ]
+    }]
+  };
+
+  fetch('https://terraintool-production.up.railway.app/webhook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(shopifyPayload)
+  })
+  .then(function (res) {
+    if (res.ok) {
+      summary.innerHTML = '<strong>Order submitted successfully.</strong>';
+    } else {
+      summary.innerHTML = '<strong>Error — server returned ' + res.status + '</strong>';
+    }
+  })
+  .catch(function (err) {
+    summary.innerHTML = '<strong>Error — could not reach server: ' + err.message + '</strong>';
+  });
+});
 
       document.getElementById('summary-cancel-btn').addEventListener('click', function () {
         summary.style.display = 'none';
