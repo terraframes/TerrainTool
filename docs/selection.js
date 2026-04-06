@@ -73,7 +73,7 @@
 
       lockMap();
 
-      ddocument.getElementById('summary-confirm-btn').addEventListener('click', function () {
+      document.getElementById('summary-confirm-btn').addEventListener('click', function () {
   // Build a Shopify-shaped payload matching what webhook.py expects
   var shopifyPayload = {
     order_number: 'TEST-' + Date.now(),
