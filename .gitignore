@@ -1,5 +1,6 @@
 # Credentials — never commit these
 credentials/
+config.json
 gdrive_key.json
 *.json.key
 
