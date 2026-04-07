@@ -12,7 +12,7 @@ import logging
 import os
 import threading
 from datetime import datetime, timezone
-from flask import Flask, request, jsonify,
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
