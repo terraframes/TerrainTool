@@ -87,26 +87,53 @@ class TERRAIN_OT_LoadOrder(Operator):
             self.report({"ERROR"}, "params.json has no 'bbox' entry.")
             return {"CANCELLED"}
 
-        # Populate panel sliders from params.json before running resample
-        settings.min_clamp          = float(p.get("min_clamp",          0.0))
-        settings.max_clamp          = float(p.get("max_clamp",          1.0))
+        # Populate panel sliders from params.json before running resample.
         settings.gamma              = float(p.get("gamma",              1.0))
         settings.displacement_scale = float(p.get("displacement_scale", 0.3))
         settings.elevation_min_m    = float(p.get("elevation_min_m",    0.0))
         settings.elevation_max_m    = float(p.get("elevation_max_m",    0.0))
 
+        # min_clamp / max_clamp are stored in metres.
+        # If the key is absent or null, remember that so we can default to the
+        # measured DEM range after the first resample run below.
+        raw_min_clamp = p.get("min_clamp")   # None if absent or JSON null
+        raw_max_clamp = p.get("max_clamp")
+        min_was_missing = raw_min_clamp is None
+        max_was_missing = raw_max_clamp is None
+
+        # Set slider values now (metre values). Missing entries get a temporary
+        # stand-in (the stored elevation bounds) — overwritten after DEM scan.
+        settings.min_clamp = float(raw_min_clamp) if not min_was_missing else settings.elevation_min_m
+        settings.max_clamp = float(raw_max_clamp) if not max_was_missing else settings.elevation_max_m
+
+        # Convert metre clamp values → 0–1 range that resample.py expects.
+        elev_range_pre = settings.elevation_max_m - settings.elevation_min_m
+        if elev_range_pre > 0:
+            t_min = max(0.0, min(1.0, (settings.min_clamp - settings.elevation_min_m) / elev_range_pre))
+            t_max = max(0.0, min(1.0, (settings.max_clamp - settings.elevation_min_m) / elev_range_pre))
+        else:
+            # Elevation not yet recorded — pass full range so nothing is clipped.
+            t_min, t_max = 0.0, 1.0
+
         preview_tif = os.path.join(folder, "preview.tif")
         result = preview.run_resample(
             folder, preview_tif, 256,
-            settings.min_clamp, settings.max_clamp, settings.gamma,
+            t_min, t_max, settings.gamma,
             bbox, self.report,
         )
         if result is None:
             return {"CANCELLED"}
 
-        # Overwrite with values measured from the actual DEM (may differ from stored params)
+        # Overwrite with values measured from the actual DEM (may differ from stored params).
         settings.elevation_min_m = result["elevation_min_m"]
         settings.elevation_max_m = result["elevation_max_m"]
+
+        # If clamp values were missing in params.json, initialise them to the
+        # full measured elevation range (equivalent to no clamping applied).
+        if min_was_missing:
+            settings.min_clamp = result["elevation_min_m"]
+        if max_was_missing:
+            settings.max_clamp = result["elevation_max_m"]
 
         preview.create_preview_mesh(preview_tif, settings.displacement_scale)
 

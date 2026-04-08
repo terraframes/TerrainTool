@@ -1,75 +1,72 @@
 # Module 1 — User-Facing Widget
 
-**STATUS: In progress — full pipeline working end-to-end. Stage 4 (real checkout) deferred.**
+**STATUS: In progress — Stages 1–3 and Widget Phases 1–3 complete.**
 
 ## What's Working
 
-Full pipeline confirmed: widget Confirm → Railway webhook → params.json on Shared Drive → visible in operator tool. No real Shopify checkout involved.
+Full pipeline: widget Confirm → Railway webhook → params.json on Shared Drive → operator tool.
+Coverage polygon system live: map centre determines dataset (FO-DEM vs GLO-30).
+Unavailable state UX: red overlay + disabled Select when high-res size selected outside coverage.
 
-## Files
+## Widget Files (/docs/ folder at repo root)
 
 ```
-module1\          (Railway uses this folder — do not rename)
-  webhook.py      Flask webhook — deployed on Railway
-  test_webhook.py local test script
-  requirements.txt  includes flask-cors
-  setup.py
-  Procfile        tells Railway to run webhook.py
-
-docs\             (GitHub Pages serves from here — at repo root, not inside module1)
-  widget.html
-  selection.js    POSTs Shopify-shaped payload directly to Railway on Confirm
-  hillshade.js
-  search.js
+widget.html                     map, overlay, UI, Turf.js CDN
+hillshade.js                    second Mapbox instance, camera sync, CSS clip-path
+search.js                       dual-source geocoding, explore mode
+selection.js                    bbox, confirmation flow, reads dataset from coverage.js
+coverage.js                     loads GeoJSONs, sets window._currentDataset per map move
+faroe_islands_coverage.geojson  Faroe Islands coverage polygon, EPSG:4326
 ```
 
-## Hosting
+## Area Sizes
 
-- **Widget**: GitHub Pages on /docs/ folder → public URL
-- **Webhook**: Railway → public URL, binds 0.0.0.0:PORT
-- **Embed**: widget iframe in hidden Shopify page (for testing)
-- **Repo**: github.com/terraframes/TerrainTool (public)
-  config.json removed from Git history via git filter-repo before making public
+Five sizes: **5, 10, 25, 50, 100 km**
+- 5 and 10 km: greyed out by default, enabled only when inside a coverage polygon
+- 25, 50, 100 km: always available (GLO-30)
 
-## Current Pipeline Flow
+## Coverage System (coverage.js)
 
-1. User positions selection, clicks Confirm
-2. selection.js POSTs Shopify-shaped payload to Railway webhook URL
-3. Order number = TEST-{timestamp} (no real checkout)
-4. Railway: constructs params.json, writes to Google Shared Drive
-5. params.json appears in operator tool orders tab
+On every map move and size button click:
+- Check map centre point against all loaded coverage polygons
+- If inside Faroe Islands polygon AND area_km <= 25: window._currentDataset = "FO-DEM"
+- Otherwise: window._currentDataset = "GLO-30"
 
-## webhook.py Key Details
+selection.js reads dataset via window.getDatasetForCurrentSelection() and:
+- Includes dataset in Shopify line item properties
+- Shows dataset in confirmation summary panel
 
-- POST /webhook → 200 immediately, processing in background thread
-- CORS enabled (flask-cors) — required for direct browser POST
-- Dual auth: GDRIVE_KEY_JSON (cloud) falls through to GDRIVE_KEY_PATH (local)
-- All Drive calls: supportsAllDrives=True, includeItemsFromAllDrives=True,
-  driveId=GDRIVE_ORDERS_DRIVE_ID, corpora='drive'
-- Never crashes on bad input — always returns 200
+## Unavailable State UX
+
+When high-res size is active and map centre moves outside coverage:
+- Border turns red
+- Semi-transparent red fill
+- Message "Chosen resolution not available in this region" below square
+- Select button disabled
+
+When back inside coverage or switched to non-high-res size: all above clears.
+
+## Webhook (Stages 2 & 3 — complete)
+
+- POST /webhook → 200 immediately, background thread
+- Extracts: order_number, min_lat, max_lat, min_lon, max_lon, area_km, dataset
+- Constructs full params.json (includes dataset field for Module 2b routing)
+- Dual auth: GDRIVE_KEY_JSON (cloud) → GDRIVE_KEY_PATH (local)
+- CORS enabled via flask-cors
+- Railway deployed: github.com/terraframes/TerrainTool
 
 ## Environment Variables
 
 | Variable | Where | Value |
 |----------|-------|-------|
 | GDRIVE_KEY_PATH | Local | E:\TerrainTool\credentials\gdrive_key.json |
-| GDRIVE_KEY_JSON | Railway | Full JSON content of service account key |
+| GDRIVE_KEY_JSON | Railway | Full JSON content |
 | MAPBOX_TOKEN | Both | Mapbox public token |
 | GDRIVE_ORDERS_DRIVE_ID | Both | Shared Drive ID |
 
-## Stage 4 (deferred)
+## Remaining / Deferred
 
-Real Shopify checkout with line item properties.
-When building: verify min_lat, max_lat, min_lon, max_lon, area_km survive
-the full checkout flow end-to-end before wiring the production webhook.
-This is the most likely failure point in the real integration.
-
-## Build Stages
-
-| Stage | Status |
-|-------|--------|
-| 1 — Offline prototype | DONE |
-| 2 — Flask webhook (local) | DONE |
-| 3 — Railway deployment | DONE |
-| 4 — Real Shopify checkout | Deferred |
-| 5 — Hardening | Post-launch |
+- Coverage info overlay (Section 8.3) — explains datasets, triggered from greyed button tooltip
+- Stage 4: real Shopify checkout — verify 6 line item properties survive
+- Dataset column width in operator tool (80 → 110px) — cosmetic
+- Stage 5 hardening: Drive write recovery, mobile layout, hillshade polish

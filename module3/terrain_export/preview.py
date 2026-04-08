@@ -223,10 +223,21 @@ def _run_preview_update():
         bbox = json.load(f).get("bbox", {})
     if not bbox:
         return
+    # Convert metre clamp values → 0–1 range that resample.py expects.
+    elev_min   = settings.elevation_min_m
+    elev_max   = settings.elevation_max_m
+    elev_range = elev_max - elev_min
+    if elev_range > 0:
+        t_min = max(0.0, min(1.0, (settings.min_clamp - elev_min) / elev_range))
+        t_max = max(0.0, min(1.0, (settings.max_clamp - elev_min) / elev_range))
+    else:
+        # Elevation not recorded yet — pass full range so nothing is clipped.
+        t_min, t_max = 0.0, 1.0
+
     preview_tif = os.path.join(order_folder, "preview.tif")
     result = run_resample(
         order_folder, preview_tif, 256,
-        settings.min_clamp, settings.max_clamp, settings.gamma,
+        t_min, t_max, settings.gamma,
         bbox, report=None,
     )
     if result:

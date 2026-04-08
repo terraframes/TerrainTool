@@ -1,58 +1,53 @@
 # Current Work State
 
 ## Active Module
-**Widget — Phase 1 (unlock 5×5km globally)**
-
-## Status
-Module 2b complete and tested. Widget coverage polygon work is next.
+No active module — full pipeline working with real Faroe Islands orders.
+Next: coverage info overlay, or operator tool improvements.
 
 ## What Is Built
 
 ### Module 4 — COMPLETE
-### Module 3 — COMPLETE (processing_status guard added)
-### Module 2 — COMPLETE (four-line filter skips non-GLO-30 orders)
+### Module 3 — COMPLETE
+- processing_status guard in LoadOrder
+- nodata guard in fill_nodata(): skip gdal.FillNodata if band nodata == 0.0
+### Module 2 — COMPLETE
 ### Module 2b — COMPLETE
-- local_clip.py, acquire_extended.py, setup.py, requirements.txt
-- FO-DEM dataset: 2m DSM, EPSG:5316, nodata 3.4e+38
-- TEST_FO_001 passed: raw_dem.tif verified in QGIS, Blender preview correct
-- Operator tool: Download DEM routes correctly per dataset
-### Module 1 — Pipeline working (Stage 4 deferred)
+- nodata_fill field in local_datasets.json (zero/interpolate)
+- Exact nodata float: 3.3999999521443642e+38 (not 3.4e+38)
+- repr(nodata_value) in subprocess strings for full precision
+- FO-DEM: ocean = 0.0 (sea level), not interpolated
+- Real order end-to-end confirmed, clean terrain, no coastline artefacts
+### Module 1 — Stages 1–3 + Widget Phases 1–3 complete
+- coverage.js: map centre vs polygon, sets dataset field
+- Unavailable state UX: red overlay, disabled Select
+- dataset in Shopify line item properties (six fields total)
+- webhook.py: reads dataset from line item properties (defaults GLO-30)
 ### Operator Tool — Full end-to-end working
 
-## What To Build Next
+## Key Decisions / Bug Fixes
 
-### Phase 1 — Unlock 5×5km globally (widget.html)
-Find and remove the restriction disabling 5×5km in widget.html.
-No coverage polygon logic yet. GLO-30 used for all orders.
-Goal: full customer flow testable with small orders.
+- nodata must use exact float — 3.3999999521443642e+38, NOT 3.4e+38
+- srcNodata in gdalwarp subprocess must use repr(nodata_value)
+- nodata_fill: "zero" for coastal/island DEMs, "interpolate" for land DEMs
+- resample.py guard: if band nodata == 0.0, skip fill_nodata entirely
+- webhook.py now reads dataset from Shopify line item properties
 
-### Phase 2 — Coverage polygon system (widget)
-- Bundle faroe_islands_coverage.geojson with widget files
-- Load Turf.js
-- On every map move: turf.booleanIntersects(selectionBbox, faroePolygon)
-- If intersects AND area_km <= 25: dataset = "FO-DEM"
-- Otherwise: dataset = "GLO-30"
-- Write dataset value into Shopify line item properties at checkout
+## Remaining Work
 
-### Phase 3 — Widget UX (after Phase 2)
-- Green/red square contour by coverage
-- Greyed buttons with tooltip
-- Coverage info overlay
+### Widget
+1. Coverage info overlay (Section 8.3) — tooltip → overlay with dataset info
+2. Stage 4: real Shopify checkout (low priority)
 
-## Operator Tool Remaining
+### Operator Tool
+1. Status auto-refresh after Blender closes
+2. Manual order entry
+3. Archive tab
+4. PyInstaller .exe
+5. Headless Blender export (--background, Step 3)
+6. Dataset column width (80 → 110px, cosmetic)
 
-- Status auto-refresh after Blender closes
-- Manual order entry
-- Archive tab
-- PyInstaller .exe
-
-## Key Decisions Made
-
-- acquire_extended.py writes processing_status: "ready" on success
-- Module 3 guards against processing orders with non-ready status
-- Operator tool routes Download DEM to correct script per dataset
-- 'ready' status added to STATUS_META and Open in Blender enable condition
-- Column width fix: order number column 200px
+### Future Datasets
+- Lantmäteriet Laserdata Skog (CC0, FTP) — nodata_fill: "interpolate"
 
 ---
 *Update this file at the end of every Claude Code session.*

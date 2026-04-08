@@ -30,9 +30,9 @@ module3/terrain_export/
 C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat
 ```
 
-## processing_status Guard (added for Module 2b)
+## processing_status Guard
 
-TERRAIN_OT_LoadOrder.execute() checks params.json processing_status before loading:
+TERRAIN_OT_LoadOrder.execute() checks params.json processing_status:
 - "pending_lidar_review" → block with message
 - "needs_manual_processing" → block with message
 - absent or "ready" → proceed normally
@@ -45,11 +45,10 @@ python-qgis-ltr.bat resample.py --input raw_dem.tif --output out.tif
   --min_clamp 0.0 --max_clamp 1.0 --gamma 1.0
 ```
 Stdout: {"elevation_min_m": ..., "elevation_max_m": ..., "status": "ok"}
-Always parse stdout as JSON. Never use stderr for control flow.
 
 ## resample.py Processing Order (load-bearing — do not change)
 
-1. gdal_fillnodata
+1. gdal_fillnodata — with nodata guard (see below)
 2. gdalwarp — two-pass: padded warp (5% bbox + dstNodata=-9999.0), then crop to exact bbox
 2b. Edge fill: copy nearest valid row/column to fill invalid edges
 3. Normalise → 0–1 (record elevation_min_m, elevation_max_m)
@@ -58,15 +57,17 @@ Always parse stdout as JSON. Never use stderr for control flow.
 6. Gamma: value = value ^ (1.0 / gamma)
 7. Save float32 GeoTIFF
 
-## Panel Layout (unified single panel)
+## ⚠ Nodata Guard in fill_nodata()
 
-Load Order → elevation info → print height (two lines) → Print Size → Base Thickness →
-Min/Max Clamp → Gamma → Displacement Scale → Save Settings → Bake & Export
+If the band's declared nodata value is 0.0, skip gdal.FillNodata entirely.
+Reason: 0.0 is valid sea level elevation for island/coastal DEMs (e.g. Faroe Islands).
+Without this guard, fill_nodata re-interpolates correctly zero-filled ocean pixels,
+creating jagged coastline artefacts in Blender.
 
 ## Key Design Decisions
 
 - TerrainPreview uses unapplied modifier — texture-only refresh on slider change
 - elevation_min/max come from DEM (resample.py stdout), not params.json
 - Print height: displacement_scale × print_size_mm ÷ 10 = terrain relief mm
-- LoadOrder accepts optional folder property — bypasses file browser for operator tool launch
+- LoadOrder accepts optional folder property for operator tool launch
 - REGISTER removed from bl_options — suppresses popup

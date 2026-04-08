@@ -62,15 +62,17 @@ class TerrainExportSettings(PropertyGroup):
 
     min_clamp: FloatProperty(
         name="Min Clamp",
-        description="Elevation values below this normalised level are clipped to 0.",
-        default=0.0, min=0.0, max=1.0, step=1,
+        # Value stored and displayed in metres. Elevations below this are clipped to zero.
+        description="Elevations below this level (metres) are clipped to 0.",
+        default=0.0, min=-500.0, max=9000.0, step=100,
         update=refinement.on_slider_change,
     )
 
     max_clamp: FloatProperty(
         name="Max Clamp",
-        description="Elevation values above this normalised level are clipped to 1.",
-        default=1.0, min=0.0, max=1.0, step=1,
+        # Value stored and displayed in metres. Elevations above this are clipped to 1.
+        description="Elevations above this level (metres) are clipped to 1.",
+        default=0.0, min=-500.0, max=9000.0, step=100,
         update=refinement.on_slider_change,
     )
 
@@ -146,11 +148,23 @@ class TERRAIN_OT_BakeAndExport(Operator):
 
         resolution = int(params.get("subdivision_level", 1024))
         bbox       = params.get("bbox", {})
+
+        # Convert metre clamp values → 0–1 range that resample.py expects.
+        elev_min   = settings.elevation_min_m
+        elev_max   = settings.elevation_max_m
+        elev_range = elev_max - elev_min
+        if elev_range > 0:
+            t_min = max(0.0, min(1.0, (settings.min_clamp - elev_min) / elev_range))
+            t_max = max(0.0, min(1.0, (settings.max_clamp - elev_min) / elev_range))
+        else:
+            # No elevation range recorded — pass full range so nothing is clipped.
+            t_min, t_max = 0.0, 1.0
+
         result = preview.run_resample(
             order_folder,
             os.path.join(order_folder, "resampled.tif"),
             resolution,
-            settings.min_clamp, settings.max_clamp, settings.gamma,
+            t_min, t_max, settings.gamma,
             bbox, self.report,
         )
         if result is None:
@@ -228,13 +242,11 @@ class TERRAIN_PT_ExportPanel(Panel):
 
         row = layout.row(align=True)
         row.prop(settings, "min_clamp", slider=True)
-        if has_elev:
-            row.label(text=f"{settings.min_clamp * elev_range + settings.elevation_min_m:.0f} m")
+        row.label(text="m")   # value is in metres
 
         row = layout.row(align=True)
         row.prop(settings, "max_clamp", slider=True)
-        if has_elev:
-            row.label(text=f"{settings.max_clamp * elev_range + settings.elevation_min_m:.0f} m")
+        row.label(text="m")   # value is in metres
 
         layout.prop(settings, "gamma",              slider=True)
         layout.prop(settings, "displacement_scale", slider=True)
