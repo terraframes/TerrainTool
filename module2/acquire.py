@@ -10,6 +10,7 @@ Run: python acquire.py
 import os
 import sys
 import json
+import argparse
 from eea39_bbox import is_in_eea39
 from dem_download import download_glo30, run_fillnodata
 from glo10_download import download_glo10
@@ -58,24 +59,7 @@ def auth_drive():
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
-def find_orders_folder(service):
-    """Return the Drive file ID of the top-level 'orders' folder."""
-    resp = service.files().list(
-        q="name='orders' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-        fields="files(id, name)",
-        pageSize=10,
-    ).execute()
-    folders = resp.get("files", [])
-    if not folders:
-        print("ERROR: No folder named 'orders' found on Google Drive.")
-        print("Create a folder called 'orders' and share it with the service account.")
-        sys.exit(1)
-    if len(folders) > 1:
-        print(f"WARNING: {len(folders)} folders named 'orders' found — using the first one.")
-    return folders[0]["id"]
-
-
-def list_subfolders(service, parent_id):
+def list_subfolders(service, parent_id, drive_id):
     """Return list of (name, id) for all subfolders of parent_id."""
     results = []
     page_token = None
@@ -85,6 +69,10 @@ def list_subfolders(service, parent_id):
             fields="nextPageToken, files(id, name)",
             pageSize=100,
             pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            corpora="drive",
+            driveId=drive_id,
         ).execute()
         results.extend((f["name"], f["id"]) for f in resp.get("files", []))
         page_token = resp.get("nextPageToken")
@@ -93,12 +81,16 @@ def list_subfolders(service, parent_id):
     return results
 
 
-def find_params_json(service, folder_id):
+def find_params_json(service, folder_id, drive_id):
     """Return file ID of params.json in folder_id, or None if absent."""
     resp = service.files().list(
         q=f"'{folder_id}' in parents and name='params.json' and trashed=false",
         fields="files(id, name)",
         pageSize=5,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+        corpora="drive",
+        driveId=drive_id,
     ).execute()
     files = resp.get("files", [])
     return files[0]["id"] if files else None
@@ -106,7 +98,7 @@ def find_params_json(service, folder_id):
 
 def download_file(service, file_id, dest_path):
     """Download a Drive file by ID to dest_path."""
-    request = service.files().get_media(fileId=file_id)
+    request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     with open(dest_path, "wb") as fh:
         downloader = MediaIoBaseDownload(fh, request)
@@ -126,21 +118,57 @@ def read_params(path):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Module 2 — acquire.py")
+    parser.add_argument(
+        "--sync-only",
+        action="store_true",
+        default=False,
+        help="Download params.json only — skip DEM download",
+    )
+    parser.add_argument(
+        "--order",
+        default=None,
+        help="Process a single order by order number (folder name on Drive). If not set, all pending orders are processed.",
+    )
+    args = parser.parse_args()
+    sync_only = args.sync_only
+    order_filter = args.order
+
     print("Module 2 — acquire.py")
     print("=" * 50)
+
+    if sync_only:
+        print("Running in sync-only mode — skipping DEM download")
+
+    # Read Shared Drive ID
+    drive_id = os.environ.get("GDRIVE_ORDERS_DRIVE_ID", "")
+    if not drive_id:
+        print("ERROR: GDRIVE_ORDERS_DRIVE_ID environment variable is not set.")
+        print("Run setup.py to configure it.")
+        sys.exit(1)
 
     # Authenticate
     print("\nConnecting to Google Drive...")
     service = auth_drive()
     print("  Authenticated OK")
 
-    # Find orders folder
-    orders_folder_id = find_orders_folder(service)
-    print(f"  Found 'orders' folder on Drive (id: {orders_folder_id})")
+    # The Shared Drive root IS the orders folder — order subfolders live directly
+    # inside it, so the drive ID itself is the parent ID to scan.
+    orders_folder_id = drive_id
+    print(f"  Connected to Shared Drive (id: {orders_folder_id})")
 
     # List subfolders
-    subfolders = list_subfolders(service, orders_folder_id)
+    subfolders = list_subfolders(service, orders_folder_id, drive_id)
     print(f"  Found {len(subfolders)} subfolders in 'orders'")
+
+    # If --order is set, filter to that one order only
+    if order_filter:
+        subfolders = [(name, fid) for name, fid in subfolders if name == order_filter]
+        if not subfolders:
+            print(f"ERROR: Order {order_filter} not found on Drive.")
+            sys.exit(1)
+        print(f"  Filtered to order: {order_filter}")
 
     if not subfolders:
         print("\nNo order folders found on Drive. Nothing to do.")
@@ -152,7 +180,7 @@ def main():
     skipped_already_local = []
 
     for order_number, folder_id in subfolders:
-        params_id = find_params_json(service, folder_id)
+        params_id = find_params_json(service, folder_id, drive_id)
         if params_id is None:
             skipped_no_params.append(order_number)
             continue
@@ -174,18 +202,19 @@ def main():
             dest = os.path.join(LOCAL_ORDERS_ROOT, order_number, "params.json")
             try:
                 download_file(service, params_id, dest)
-                print(f"  [{order_number}] params.json → {dest}")
+                print(f"  [{order_number}] params.json -> {dest}")
                 downloaded.append(order_number)
             except Exception as e:
                 print(f"  [{order_number}] FAILED to download params.json: {e}")
                 failed.append(order_number)
 
     # ── Session 2: DEM download ────────────────────────────────────────────────
+    # Skipped entirely when --sync-only is set.
 
     dem_ok = []
     dem_failed = []
 
-    if downloaded:
+    if downloaded and not sync_only:
         print(f"\nDownloading DEM for {len(downloaded)} order(s)...")
         for order_number in downloaded:
             params_path = os.path.join(LOCAL_ORDERS_ROOT, order_number, "params.json")
@@ -194,6 +223,11 @@ def main():
             except Exception as e:
                 print(f"  [{order_number}] ERROR: Could not read params.json — {e}")
                 dem_failed.append(order_number)
+                continue
+
+            # Skip non-GLO-30 orders — handled by Module 2b (acquire_extended.py)
+            if params.get("dataset", "GLO-30") != "GLO-30":
+                print(f"  [{order_number}] Skipping — dataset '{params.get('dataset')}' handled by Module 2b.")
                 continue
 
             lat = params.get("center_lat", 0.0)
@@ -240,21 +274,34 @@ def main():
         print(f"  ERRORS — params.json download failed : {len(failed)}")
         for o in failed:
             print(f"    - {o}")
-    print(f"  DEM downloaded OK                    : {len(dem_ok)}")
-    if dem_ok:
-        for o in dem_ok:
-            print(f"    - {o}")
-    if dem_failed:
-        print(f"  ERRORS — DEM download failed         : {len(dem_failed)}")
-        for o in dem_failed:
-            print(f"    - {o}")
 
-    if not pending:
-        print("\nNo pending orders found.")
+    if sync_only:
+        # Sync-only mode: show params.json download count, skip DEM lines
+        print(f"  params.json downloaded               : {len(downloaded)}")
+        if downloaded:
+            for o in downloaded:
+                print(f"    - {o}")
+        if not pending:
+            print("\nNo pending orders found.")
+        else:
+            print(f"\nDone. {len(downloaded)} params.json downloaded, {len(failed)} error(s).")
     else:
-        total_ok = len(dem_ok)
-        total_err = len(failed) + len(dem_failed)
-        print(f"\nDone. {total_ok} order(s) complete, {total_err} error(s).")
+        # Full run: show DEM results
+        print(f"  DEM downloaded OK                    : {len(dem_ok)}")
+        if dem_ok:
+            for o in dem_ok:
+                print(f"    - {o}")
+        if dem_failed:
+            print(f"  ERRORS — DEM download failed         : {len(dem_failed)}")
+            for o in dem_failed:
+                print(f"    - {o}")
+
+        if not pending:
+            print("\nNo pending orders found.")
+        else:
+            total_ok = len(dem_ok)
+            total_err = len(failed) + len(dem_failed)
+            print(f"\nDone. {total_ok} order(s) complete, {total_err} error(s).")
 
 
 if __name__ == "__main__":

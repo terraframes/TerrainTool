@@ -62,7 +62,7 @@ def download_glo30(params, order_number):
         fh.write(data)
 
     size_mb = len(data) / (1024 * 1024)
-    print(f"  [{order_number}] GLO-30 saved → {dest} ({size_mb:.1f} MB)")
+    print(f"  [{order_number}] GLO-30 saved -> {dest} ({size_mb:.1f} MB)")
     return True
 
 
@@ -72,8 +72,8 @@ def run_fillnodata(order_number, tif_path):
 
     The input is a Cloud Optimized GeoTIFF which cannot be edited in-place.
     Steps:
-      1. gdal_translate → raw_dem_temp.tif (standard GeoTIFF)
-      2. gdal.FillNodata on raw_dem_temp.tif → raw_dem.tif
+      1. gdal_translate -> raw_dem_temp.tif (standard GeoTIFF)
+      2. gdal.FillNodata on raw_dem_temp.tif -> raw_dem.tif
       3. Delete raw_dem_temp.tif
 
     Returns True on success, False on failure.
@@ -83,7 +83,7 @@ def run_fillnodata(order_number, tif_path):
     inline = (
         "from osgeo import gdal; "
         "gdal.UseExceptions(); "
-        # Step 1: translate COG → standard GeoTIFF
+        # Step 1: translate COG -> standard GeoTIFF
         f"gdal.Translate(r'{temp_path}', r'{tif_path}', format='GTiff'); "
         # Step 2: fillnodata on temp, writing output to tif_path
         f"ds = gdal.Open(r'{temp_path}', gdal.GA_Update); "
@@ -91,7 +91,7 @@ def run_fillnodata(order_number, tif_path):
         "gdal.FillNodata(b, None, 100, 0); "
         "ds.FlushCache(); "
         "ds = None; "
-        # Step 3: translate filled temp → final raw_dem.tif
+        # Step 3: translate filled temp -> final raw_dem.tif
         f"gdal.Translate(r'{tif_path}', r'{temp_path}', format='GTiff'); "
         # Step 4: delete temp
         "import os; "
