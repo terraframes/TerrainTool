@@ -19,6 +19,8 @@ from config import load_config
 
 # Path to the DEM acquisition script (module 2)
 ACQUIRE_SCRIPT = r"E:\TerrainTool\module2\acquire.py"
+# Path to the extended acquisition script (module 2b) — handles non-GLO-30 datasets
+ACQUIRE_EXTENDED_SCRIPT = r"E:\TerrainTool\module2b\acquire_extended.py"
 
 
 # --- Status definitions -------------------------------------------------
@@ -27,6 +29,7 @@ ACQUIRE_SCRIPT = r"E:\TerrainTool\module2\acquire.py"
 STATUS_META = {
     "received":    ("Received", "#6b7280"),   # grey
     "dem_done":    ("DEM Ready", "#2563eb"),  # blue
+    "ready":       ("DEM Ready", "#2563eb"),  # Module 2b sets this instead of dem_done
     "refine_done": ("Refined",   "#d97706"),  # yellow/amber
     "exported":    ("Exported",  "#16a34a"),  # green
     "error":       ("Error",     "#dc2626"),  # red
@@ -149,12 +152,14 @@ class OrdersTab:
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(side="left")
 
-        ctk.CTkButton(
+        # Keep a reference so we can disable it while a sync is running
+        self._refresh_btn = ctk.CTkButton(
             top_bar,
             text="Refresh",
             width=90,
             command=self._refresh,
-        ).pack(side="right")
+        )
+        self._refresh_btn.pack(side="right")
 
         # Thin separator below the top bar
         ctk.CTkFrame(parent, height=2, fg_color="gray30").pack(
@@ -165,14 +170,74 @@ class OrdersTab:
         self._list_frame = ctk.CTkScrollableFrame(parent, fg_color="transparent")
         self._list_frame.pack(fill="both", expand=True, padx=16, pady=(0, 12))
 
-        self._refresh()
+        # On first build just scan locally — don't trigger a Drive sync
+        self._redraw_list()
 
     # ------------------------------------------------------------------ #
     # Private — list management                                           #
     # ------------------------------------------------------------------ #
 
     def _refresh(self) -> None:
-        """Clear and redraw the orders list from disk."""
+        """
+        Called when the Refresh button is clicked.
+        If acquire.py exists, runs it with --sync-only in a background thread
+        to pull any new orders from Google Drive before redrawing the list.
+        Falls back to a local-only redraw if the script is missing.
+        """
+        # Guard: don't let the user trigger a second sync while one is running
+        self._refresh_btn.configure(state="disabled")
+
+        if not os.path.isfile(ACQUIRE_SCRIPT):
+            # acquire.py missing — just refresh from what's on disk
+            self._console.log(
+                "acquire.py not found — refreshing local list only", level="warn"
+            )
+            self._redraw_list()
+            self._refresh_btn.configure(state="normal")
+            return
+
+        # acquire.py found — run the sync in the background so the UI stays responsive
+        self._console.log("Syncing orders from Google Drive...", level="info")
+
+        def run():
+            try:
+                proc = subprocess.Popen(
+                    ["python", ACQUIRE_SCRIPT, "--sync-only"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,   # merge stderr so we see everything
+                    text=True,
+                    bufsize=1,                  # line-buffered for real-time output
+                )
+
+                # Stream each output line to the console on the main thread
+                for line in proc.stdout:
+                    stripped = line.rstrip()
+                    if stripped:
+                        self._app.after(0, lambda msg=stripped: self._console.log(msg, level="info"))
+
+                proc.wait()
+
+                if proc.returncode == 0:
+                    self._app.after(0, lambda: self._console.log("Sync complete", level="ok"))
+                else:
+                    self._app.after(0, lambda: self._console.log(
+                        "Sync failed — check console for details", level="error"
+                    ))
+
+            except Exception as e:
+                self._app.after(0, lambda err=e: self._console.log(
+                    f"Failed to start acquire.py: {err}", level="error"
+                ))
+            finally:
+                # Always redraw and re-enable the button on the main thread,
+                # even if the sync failed — show whatever is available locally
+                self._app.after(0, self._redraw_list)
+                self._app.after(0, lambda: self._refresh_btn.configure(state="normal"))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _redraw_list(self) -> None:
+        """Clear and redraw the orders list from the local orders folder."""
         for widget in self._list_frame.winfo_children():
             widget.destroy()
 
@@ -225,7 +290,7 @@ class OrdersTab:
         row = ctk.CTkFrame(self._list_frame, fg_color=bg_colour, corner_radius=6)
         row.pack(fill="x", pady=(0, 4))
 
-        row.grid_columnconfigure(0, minsize=110)   # order number
+        row.grid_columnconfigure(0, minsize=150)   # order number
         row.grid_columnconfigure(1, minsize=80)    # area
         row.grid_columnconfigure(2, minsize=80)    # dataset
         row.grid_columnconfigure(3, minsize=100)   # badge
@@ -239,6 +304,7 @@ class OrdersTab:
             text=f"#{order['order_number']}",
             font=ctk.CTkFont(weight="bold"),
             anchor="w",
+            width=150,
         ).grid(row=0, column=0, padx=(12, 8), pady=10, sticky="w")
 
         # Area
@@ -277,7 +343,7 @@ class OrdersTab:
         ).grid(row=0, column=5, padx=(0, 6), pady=8)
 
         # Button 2: Open in Blender — active at any post-DEM stage
-        blender_state = "normal" if status in ("dem_done", "refine_done", "exported") else "disabled"
+        blender_state = "normal" if status in ("dem_done", "ready", "refine_done", "exported") else "disabled"
         ctk.CTkButton(
             row,
             text="Open in Blender",
@@ -298,10 +364,16 @@ class OrdersTab:
         num = order["order_number"]
         self._console.log(f"Downloading DEM for order {num}...", level="info")
 
+        # Route to the correct acquisition script based on the order's dataset.
+        # GLO-30 orders use Module 2 (acquire.py).
+        # All other datasets (local rasters, future LiDAR) use Module 2b (acquire_extended.py).
+        dataset = order.get("dataset", "GLO-30")
+        script = ACQUIRE_SCRIPT if dataset == "GLO-30" else ACQUIRE_EXTENDED_SCRIPT
+
         def run():
             try:
                 proc = subprocess.Popen(
-                    ["python", ACQUIRE_SCRIPT, "--order", num],
+                    ["python", script, "--order", num],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,   # merge stderr into stdout
                     text=True,
@@ -332,8 +404,8 @@ class OrdersTab:
                     f"Failed to start acquire.py: {e}", level="error"
                 )
             finally:
-                # Refresh the order list on the main thread once the process is done
-                self._app.after(0, self._refresh)
+                # Redraw the order list on the main thread once the process is done
+                self._app.after(0, self._redraw_list)
 
         threading.Thread(target=run, daemon=True).start()
 

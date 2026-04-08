@@ -80,7 +80,7 @@ class Console:
 
         # The text widget lives inside a plain tk Frame so we can give it
         # an exact height in pixels (CTk widgets use rows/columns, not pixels).
-        text_container = tk.Frame(parent, bg="#0d0d0d", height=140)
+        text_container = tk.Frame(parent, bg="#0d0d0d", height=250)
         text_container.pack(fill="x")
         text_container.pack_propagate(False)  # lock the height
 

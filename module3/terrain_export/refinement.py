@@ -59,6 +59,22 @@ class TERRAIN_OT_LoadOrder(Operator):
         if p is None:
             return {"CANCELLED"}
 
+        # Check processing_status — block load if the order is not ready yet.
+        # "pending_lidar_review" means Module 2b downloaded the LAZ tiles but the
+        # operator hasn't run the QGIS rasterisation review yet.
+        # Absent or "ready" both mean the order is fine to load.
+        status = p.get("processing_status", "ready")
+        if status == "pending_lidar_review":
+            self.report({"ERROR"},
+                "This order is waiting for LiDAR review.\n"
+                "Run the QGIS rasterisation script first, then reload.")
+            return {"CANCELLED"}
+        if status == "needs_manual_processing":
+            self.report({"ERROR"},
+                "This order is flagged for manual processing.\n"
+                "Check params.json and resolve the issue before loading.")
+            return {"CANCELLED"}
+
         # Remove the default Cube and any other starter objects before doing anything else
         bake.clear_default_objects()
 
