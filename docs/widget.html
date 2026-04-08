@@ -214,7 +214,7 @@
   // ── Overlay sizing ──────────────────────────────────────────────────────────
 
   function metersPerPixel(lat, zoom) {
-    return (156543.03392 * Math.cos(lat * Math.PI / 180)) / Math.pow(2, zoom);
+    return (78271.51696 * Math.cos(lat * Math.PI / 180)) / Math.pow(2, zoom);
   }
 
   function updateOverlay() {
@@ -233,10 +233,10 @@
 
   // Returns zoom level where the selection square fills ~65% of shortest viewport dim
   function zoomFor65Pct(lat) {
-    const minDim = Math.min(map.getCanvas().width, map.getCanvas().height);
+    const minDim = Math.min(map.getCanvas().clientWidth, map.getCanvas().clientHeight);
     const targetPx = 0.65 * minDim;
     // targetPx = area_km*1000 / mpp  =>  2^zoom = 156543*cos(lat)*targetPx / (area_km*1000)
-    return Math.log2(156543.03392 * Math.cos(lat * Math.PI / 180) * targetPx / (area_km * 1000));
+    return Math.log2(78271.51696 * Math.cos(lat * Math.PI / 180) * targetPx / (area_km * 1000));
   }
 
   function autoZoom() {
