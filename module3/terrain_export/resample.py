@@ -63,6 +63,14 @@ def fill_nodata(input_path, output_path):
     src_ds = None
 
     band = dst_ds.GetRasterBand(1)
+    nodata_val = band.GetNoDataValue()
+
+    # Skip fill if nodata is 0.0 — this means the dataset uses 0 as sea level
+    # (e.g. Faroe Islands DSM) and there are no real voids to fill.
+    # Filling would incorrectly interpolate coastline pixels.
+    if nodata_val == 0.0:
+        dst_ds = None
+        return
 
     # maskBand=None tells GDAL to use the band's own nodata mask
     gdal.FillNodata(

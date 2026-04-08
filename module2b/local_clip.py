@@ -135,7 +135,7 @@ def clip_local_dem(params, order_number):
         "opts = gdal.WarpOptions("
         "    dstSRS='EPSG:4326', "
         f"   outputBounds=({te_min_lon}, {te_min_lat}, {te_max_lon}, {te_max_lat}), "
-        f"   srcNodata={nodata_value}, "
+        f"   srcNodata={repr(nodata_value)}, "
         "    dstNodata=-9999, "
         "    resampleAlg='bilinear', "
         "    outputType=gdal.GDT_Float32, "
@@ -170,17 +170,62 @@ def clip_local_dem(params, order_number):
     print(f"  [{order_number}] gdalwarp complete -> {raw_dem_path} ({size_mb:.1f} MB)")
 
     # ------------------------------------------------------------------
-    # Step 5 — Fill nodata voids using Module 2's run_fillnodata
+    # Step 5 — Fill nodata pixels according to the dataset's nodata_fill
+    # setting in local_datasets.json.
+    # "zero"        — replace all nodata pixels with 0 (sea level).
+    #                 Use for island/coastal DEMs where nodata = ocean.
+    # "interpolate" — use gdal_fillnodata to interpolate from nearby
+    #                 valid pixels. Use for land DEMs with scan gaps.
     # ------------------------------------------------------------------
 
-    # Insert module2 at the front of sys.path so run_fillnodata can be imported
-    module2_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "module2")
-    module2_dir = os.path.normpath(module2_dir)
-    sys.path.insert(0, module2_dir)
-    from dem_download import run_fillnodata  # noqa: E402
+    nodata_fill = ds_entry.get("nodata_fill", "interpolate")
 
-    if not run_fillnodata(order_number, raw_dem_path):
-        return False
+    print(f"  [{order_number}] nodata_fill setting: {nodata_fill}")
+
+    if nodata_fill == "zero":
+        print(f"  [{order_number}] Replacing nodata with 0 (sea level) via QGIS Python...")
+        inline = (
+            "from osgeo import gdal; "
+            "import numpy; "
+            "gdal.UseExceptions(); "
+            f"ds = gdal.Open(r'{raw_dem_path}', gdal.GA_Update); "
+            "band = ds.GetRasterBand(1); "
+            "data = band.ReadAsArray(); "
+            "data[data < -9998] = 0.0; "
+            "band.WriteArray(data); "
+            "band.SetNoDataValue(0.0); "
+            "ds.FlushCache(); "
+            "ds = None; "
+            "print('nodata fill OK')"
+        )
+        try:
+            result = subprocess.run(
+                [QGIS_PYTHON, "-c", inline],
+                capture_output=True, text=True, timeout=300
+            )
+        except subprocess.TimeoutExpired:
+            print(f"  [{order_number}] ERROR: nodata zero-fill timed out.")
+            return False
+
+        if result.returncode != 0 or "nodata fill OK" not in result.stdout:
+            print(f"  [{order_number}] ERROR: nodata zero-fill failed.")
+            if result.stdout.strip():
+                print(f"  [{order_number}]   stdout: {result.stdout.strip()[:400]}")
+            if result.stderr.strip():
+                print(f"  [{order_number}]   stderr: {result.stderr.strip()[:400]}")
+            return False
+
+        print(f"  [{order_number}] Nodata replaced with 0 (sea level).")
+
+    else:
+        # Default: interpolate using Module 2's run_fillnodata
+        module2_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "module2")
+        module2_dir = os.path.normpath(module2_dir)
+        sys.path.insert(0, module2_dir)
+        from dem_download import run_fillnodata  # noqa: E402
+
+        if not run_fillnodata(order_number, raw_dem_path):
+            return False
 
     # ------------------------------------------------------------------
     # Step 6 — Delete the temporary VRT if one was created
