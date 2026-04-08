@@ -1,0 +1,11 @@
+{
+  "FO-DEM": {
+    "description": "Faroe Islands national DSM, 2m resolution",
+    "files": ["E:\\TerrainTool\\datasets\\faroe_islands\\FO_DSM_2015_FOTM_2M.tif"],
+    "nodata_value": 3.4e+38,
+    "coverage": "E:\\TerrainTool\\datasets\\faroe_islands\\faroe_islands_coverage.geojson",
+    "resolution_m": 2,
+    "type": "local_raster",
+    "dsm": true
+  }
+}
