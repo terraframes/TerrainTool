@@ -146,7 +146,7 @@ def write_order_txt(order_number, params):
             f"Order: {order_number}",
             f"Date: {now}",
             f"Area: {params['area_km']} km",
-            f"Dataset: GLO-30",
+            f"Dataset: {params['dataset']}",
             f"BBox: N{bbox['max_lat']} S{bbox['min_lat']} E{bbox['max_lon']} W{bbox['min_lon']}",
             f"Center: {params['center_lat']}, {params['center_lon']}",
         ]
@@ -208,6 +208,7 @@ def webhook():
         return jsonify({"status": "ok"}), 200
 
     # Parse numeric values
+    dataset = props.get("dataset", "GLO-30")
     try:
         min_lat = float(props["min_lat"])
         max_lat = float(props["max_lat"])
@@ -230,7 +231,7 @@ def webhook():
         "center_lat": (min_lat + max_lat) / 2,
         "center_lon": (min_lon + max_lon) / 2,
         "area_km": area_km,
-        "dataset": "GLO-30",
+        "dataset": dataset,
         "dem_resolution_m": 30,
         "elevation_min_m": 0.0,
         "elevation_max_m": 0.0,

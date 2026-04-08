@@ -18,3 +18,5 @@ __pycache__/
 
 # Environment files
 .env
+datasets/faroe_islands/FO_DSM_2015_FOTM_2M.tif.aux.xml
+datasets/faroe_islands/FO_DSM_2015_FOTM_2M.tif

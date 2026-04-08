@@ -1,82 +1,68 @@
 # Module 1 — User-Facing Widget
 
-**STATUS: In progress — Stages 1, 2, 3 complete. Stage 4 (Shopify integration) next.**
+**STATUS: In progress — full pipeline working end-to-end. Stage 4 (real checkout) deferred.**
 
-## Stage 1 Files (complete)
+## What's Working
+
+Full pipeline confirmed: widget Confirm → Railway webhook → params.json on Shared Drive → visible in operator tool. No real Shopify checkout involved.
+
+## Files
 
 ```
-module1\
-  widget.html     main page — map containers, overlay div, UI controls
-  hillshade.js    second Mapbox instance, camera sync, CSS clip-path
-  search.js       dual-source geocoding, autocomplete, explore mode
-  selection.js    bbox computation, confirmation flow, payload output
-  webhook.py      Flask webhook receiver — BUILT AND DEPLOYED
+module1\          (Railway uses this folder — do not rename)
+  webhook.py      Flask webhook — deployed on Railway
   test_webhook.py local test script
-  requirements.txt
+  requirements.txt  includes flask-cors
   setup.py
+  Procfile        tells Railway to run webhook.py
+
+docs\             (GitHub Pages serves from here — at repo root, not inside module1)
+  widget.html
+  selection.js    POSTs Shopify-shaped payload directly to Railway on Confirm
+  hillshade.js
+  search.js
 ```
 
-## Map — Key Decisions
+## Hosting
 
-- Mapbox GL JS v3.3, outdoors-v12, default centre Stockholm [18.0727, 59.321]
-- Two stacked instances: bottom basemap, top hillshade-only
-- Hillshade clipped via CSS clip-path: inset() — updates every camera move
-- Dual-source search: Mapbox + Nominatim in parallel (Promise.allSettled)
-- Rotation disabled, browser zoom locked via viewport meta
-- Pixel formula: (area_km * 1000) / ((156543.03392 * cos(lat)) / 2^zoom)
-- isProgrammaticMove guard for flyTo / explore mode
+- **Widget**: GitHub Pages on /docs/ folder → public URL
+- **Webhook**: Railway → public URL, binds 0.0.0.0:PORT
+- **Embed**: widget iframe in hidden Shopify page (for testing)
+- **Repo**: github.com/terraframes/TerrainTool (public)
+  config.json removed from Git history via git filter-repo before making public
 
-## webhook.py (Stages 2 & 3 — complete)
+## Current Pipeline Flow
 
-**Deployed on Railway. End-to-end tested.**
+1. User positions selection, clicks Confirm
+2. selection.js POSTs Shopify-shaped payload to Railway webhook URL
+3. Order number = TEST-{timestamp} (no real checkout)
+4. Railway: constructs params.json, writes to Google Shared Drive
+5. params.json appears in operator tool orders tab
 
-Behaviour:
+## webhook.py Key Details
+
 - POST /webhook → 200 immediately, processing in background thread
-- Extracts: order_number, min_lat, max_lat, min_lon, max_lon, area_km
-- Constructs full params.json with all Module 3/4 defaults
-- Writes params.json to Google Shared Drive: orders/{order_number}/
-- Writes order.txt locally (silently skipped on Railway — harmless)
-- Logs Mapbox Static Images URL for order confirmation email
+- CORS enabled (flask-cors) — required for direct browser POST
+- Dual auth: GDRIVE_KEY_JSON (cloud) falls through to GDRIVE_KEY_PATH (local)
+- All Drive calls: supportsAllDrives=True, includeItemsFromAllDrives=True,
+  driveId=GDRIVE_ORDERS_DRIVE_ID, corpora='drive'
 - Never crashes on bad input — always returns 200
-
-**Google Drive Auth — dual mode:**
-- MODE A: GDRIVE_KEY_JSON env var (full JSON string) — Railway/cloud
-- MODE B: GDRIVE_KEY_PATH env var (file path) — local
-- Falls through A → B if JSON parse fails
-
-**⚠ Shared Drive required:**
-Service accounts have no storage quota on regular My Drive.
-Orders live in a Shared Drive called 'orders'.
-All Drive API calls need: supportsAllDrives=True, includeItemsFromAllDrives=True,
-driveId, corpora='drive'
-Shared Drive ID from GDRIVE_ORDERS_DRIVE_ID env var.
-
-**Railway deployment:**
-- Code at github.com/terraframes/TerrainTool
-- Credentials and order data excluded via .gitignore
-- Procfile: runs webhook.py, binds to 0.0.0.0, port from PORT env var
-- Railway env vars: GDRIVE_KEY_JSON, MAPBOX_TOKEN, GDRIVE_ORDERS_DRIVE_ID
 
 ## Environment Variables
 
 | Variable | Where | Value |
 |----------|-------|-------|
-| GDRIVE_KEY_PATH | Local only | E:\TerrainTool\credentials\gdrive_key.json |
+| GDRIVE_KEY_PATH | Local | E:\TerrainTool\credentials\gdrive_key.json |
 | GDRIVE_KEY_JSON | Railway | Full JSON content of service account key |
 | MAPBOX_TOKEN | Both | Mapbox public token |
 | GDRIVE_ORDERS_DRIVE_ID | Both | Shared Drive ID |
 
-## Stage 4 — To Build
+## Stage 4 (deferred)
 
-Wire widget into Shopify store:
-- Embed widget HTML in Shopify product page
-- Bbox fields as line item properties through checkout
-- Register Railway webhook URL in Shopify for orders/paid
-- Update order confirmation email with Mapbox static thumbnail
-- End-to-end test: select → checkout → webhook → params.json on Drive → acquire.py picks up
-
-⚠ Key risk: verify line item properties survive Shopify checkout end-to-end.
-Test this before building the Shopify integration.
+Real Shopify checkout with line item properties.
+When building: verify min_lat, max_lat, min_lon, max_lon, area_km survive
+the full checkout flow end-to-end before wiring the production webhook.
+This is the most likely failure point in the real integration.
 
 ## Build Stages
 
@@ -85,5 +71,5 @@ Test this before building the Shopify integration.
 | 1 — Offline prototype | DONE |
 | 2 — Flask webhook (local) | DONE |
 | 3 — Railway deployment | DONE |
-| 4 — Shopify integration | Next |
+| 4 — Real Shopify checkout | Deferred |
 | 5 — Hardening | Post-launch |
