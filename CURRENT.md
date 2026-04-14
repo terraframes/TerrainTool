@@ -1,53 +1,51 @@
 # Current Work State
 
 ## Active Module
-No active module — full pipeline working with real Faroe Islands orders.
-Next: coverage info overlay, or operator tool improvements.
+No active build — all implemented items working.
+Next: Coverage info overlay (Section 8.3), or operator tool improvements.
 
 ## What Is Built
 
 ### Module 4 — COMPLETE
-### Module 3 — COMPLETE
-- processing_status guard in LoadOrder
-- nodata guard in fill_nodata(): skip gdal.FillNodata if band nodata == 0.0
-### Module 2 — COMPLETE
-### Module 2b — COMPLETE
-- nodata_fill field in local_datasets.json (zero/interpolate)
-- Exact nodata float: 3.3999999521443642e+38 (not 3.4e+38)
-- repr(nodata_value) in subprocess strings for full precision
-- FO-DEM: ocean = 0.0 (sea level), not interpolated
-- Real order end-to-end confirmed, clean terrain, no coastline artefacts
-### Module 1 — Stages 1–3 + Widget Phases 1–3 complete
-- coverage.js: map centre vs polygon, sets dataset field
-- Unavailable state UX: red overlay, disabled Select
-- dataset in Shopify line item properties (six fields total)
-- webhook.py: reads dataset from line item properties (defaults GLO-30)
+### Module 3 — COMPLETE (processing_status guard, nodata 0.0 guard)
+### Module 2 — COMPLETE (GLO-30, Shared Drive, --sync-only, --order)
+### Module 2b — COMPLETE (Faroe Islands, real order end-to-end confirmed)
+### Module 1 — Stages 1–3 complete + slider built
+  - Tile constant fixed: 78271.516 (512px tiles)
+  - Continuous area slider: noUiSlider 15.7.1, SNAP_LIST, two-segment mapping
+  - Three coverage states: GLO-30 only / inside coverage / red state
+  - coverage.js fully rewritten, hillshade.js and selection.js updated
 ### Operator Tool — Full end-to-end working
-
-## Key Decisions / Bug Fixes
-
-- nodata must use exact float — 3.3999999521443642e+38, NOT 3.4e+38
-- srcNodata in gdalwarp subprocess must use repr(nodata_value)
-- nodata_fill: "zero" for coastal/island DEMs, "interpolate" for land DEMs
-- resample.py guard: if band nodata == 0.0, skip fill_nodata entirely
-- webhook.py now reads dataset from Shopify line item properties
 
 ## Remaining Work
 
 ### Widget
-1. Coverage info overlay (Section 8.3) — tooltip → overlay with dataset info
-2. Stage 4: real Shopify checkout (low priority)
+1. Coverage info overlay (Section 8.3)
+2. Stage 4: real Shopify checkout
 
 ### Operator Tool
 1. Status auto-refresh after Blender closes
 2. Manual order entry
 3. Archive tab
 4. PyInstaller .exe
-5. Headless Blender export (--background, Step 3)
+5. Headless Blender export (--background)
 6. Dataset column width (80 → 110px, cosmetic)
 
 ### Future Datasets
-- Lantmäteriet Laserdata Skog (CC0, FTP) — nodata_fill: "interpolate"
+- Lantmäteriet Laserdata Skog (CC0, FTP)
+
+## Key Decisions Made
+
+- Two-segment track: LEFT_SEGMENT_END_PCT = 25 (left 25% = 2–25km, right 75% = 25–200km)
+- snapIndexToTrackPct() / trackPctToSnapIndex() handle the mapping
+- Hard lock: handle cannot enter left segment when outside coverage
+- Red state: fires when panning outside coverage while handle < 25km
+- No force-snap on drag release in red state — user acts when ready
+- Hard lock re-engages at 25km if user drags toward it from red state
+- update event: no auto-zoom; change event (drag end): snap + auto-zoom
+- window._triggerClipUpdate exposed from hillshade.js
+- window._currentAreaKm used by widget.html (removed local area_km variable)
+- initCoverage(map, []) — empty array passed from widget.html
 
 ---
 *Update this file at the end of every Claude Code session.*

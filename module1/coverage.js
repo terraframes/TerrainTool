@@ -1,167 +1,185 @@
 // coverage.js — Coverage polygon system for high-resolution datasets
 // Exposes:
-//   window.initCoverage(map, highResKmSizes)      — call once after map loads
-//   window.getDatasetForCurrentSelection()         — returns dataset string for current selection
-//   window.onSizeChanged(map, highResKmSizes)      — call from size button click handler
+//   window.initCoverage(map, highResKmSizes)  — call once after map loads
+//   window.getDatasetForCurrentSelection()    — returns dataset string for current selection
 
 (function () {
   'use strict';
 
-  // The currently active dataset, updated on every map move.
-  // Defaults to GLO-30 until coverage polygons are loaded and a match is found.
   window._currentDataset = 'GLO-30';
-
-  // True when the active size requires high-res coverage that isn't available here.
-  // selection.js reads this; the confirm button is disabled by _applyInvalidState().
   window._selectionInvalid = false;
-
-  // Array of { dataset: string, geojson: GeoJSON Feature } objects.
-  // Populated once faroe_islands_coverage.geojson (and any future files) are loaded.
   window._coveragePolygons = [];
 
-  var _highResKmSizes = [];
+  var SNAP_LIST = [
+    2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9,
+    3.0, 3.2, 3.4, 3.6, 3.8,
+    4.0, 4.2, 4.4, 4.6, 4.8,
+    5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    22, 24, 25, 26, 28, 30, 32, 34, 36, 38, 40,
+    45, 50, 55, 60, 65, 70, 75, 80, 90,
+    100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200
+  ];
+  var HIGH_RES_THRESHOLD_KM = 25;
+  var LEFT_SEGMENT_END_PCT = 25;
+  var thresholdIndex = SNAP_LIST.indexOf(HIGH_RES_THRESHOLD_KM);
+  var lastIndex = SNAP_LIST.length - 1;
+  if (thresholdIndex === -1) console.error('ASSERTION FAILED: 25 not in SNAP_LIST');
+  window._currentAreaKm = HIGH_RES_THRESHOLD_KM;
+  var _currentSnapIndex = thresholdIndex;
+  var _isDragging = false;
+  var _insideCoverage = false;
+  var _map = null;
+  var sliderEl = null;
 
-  // Returns the dataset string appropriate for the current map center + selected size.
   window.getDatasetForCurrentSelection = function () {
     return window._currentDataset || 'GLO-30';
   };
 
-  // onSizeChanged — call from widget.html size button click handler.
-  // Size button clicks don't trigger a map move event, so we need a separate hook.
-  window.onSizeChanged = function (map, highResKmSizes) {
-    _updateSizeButtons(map, highResKmSizes);
-  };
-
-  // initCoverage — call once on page load.
-  //   map            — the Mapbox GL map instance
-  //   highResKmSizes — array of size strings that require coverage, e.g. ['5', '10']
-  window.initCoverage = function (map, highResKmSizes) {
-    _highResKmSizes = highResKmSizes;
-  // Grey out high-res buttons immediately on load — they stay grey until
-  // coverage polygons confirm the centre point is inside a covered area.
-    highResKmSizes.forEach(function(km) {
-    var btn = document.querySelector('.size-btn[data-km="' + km + '"]');
-    if (btn) btn.disabled = true;
-});
-
-    // Fetch the Faroe Islands coverage GeoJSON relative to this page.
-    fetch('faroe_islands_coverage.geojson')
-      .then(function (res) {
-        if (!res.ok) {
-          throw new Error('HTTP ' + res.status + ' fetching faroe_islands_coverage.geojson');
-        }
-        return res.json();
-      })
-      .then(function (geojson) {
-        // Store the loaded feature. The GeoJSON may be a FeatureCollection or a single Feature.
-        // Turf works with individual Features, so unwrap FeatureCollections.
-        var features = [];
-        if (geojson.type === 'FeatureCollection') {
-          features = geojson.features;
-        } else if (geojson.type === 'Feature') {
-          features = [geojson];
-        } else {
-          // Plain geometry — wrap it
-          features = [{ type: 'Feature', geometry: geojson, properties: {} }];
-        }
-
-        features.forEach(function (feature) {
-          window._coveragePolygons.push({ dataset: 'FO-DEM', geojson: feature });
-        });
-
-        console.log('Coverage: loaded ' + window._coveragePolygons.length +
-                    ' polygon(s) for FO-DEM');
-
-        // Run an immediate check so the UI reflects the starting position.
-        _updateSizeButtons(map, highResKmSizes);
-      })
-      .catch(function (err) {
-        // GeoJSON failed to load — high-res sizes are permanently unavailable.
-        console.error('Coverage: failed to load faroe_islands_coverage.geojson —', err.message);
-        console.error('Coverage: 5 km and 10 km will be marked invalid if selected.');
-
-        // If the user already has a high-res size active, show the invalid state.
-        // Otherwise clear it so non-high-res sizes work normally.
-        var activeBtn = document.querySelector('.size-btn.active');
-        var activeKm = activeBtn ? activeBtn.dataset.km : null;
-        var highResKmSizesStr = highResKmSizes.map(String);
-        if (activeKm && highResKmSizesStr.indexOf(activeKm) !== -1) {
-          _applyInvalidState();
-        } else {
-          _applyClearState();
-        }
-      });
-
-    // Re-check coverage on every map move so the UI stays in sync as the user pans.
-    map.on('move', function () {
-      _updateSizeButtons(map, highResKmSizes);
-    });
-  };
-
-  // _applyInvalidState — the active size requires coverage that isn't available here.
-  // Turns the overlay red, disables Confirm, shows the coverage message.
-  function _applyInvalidState() {
-    window._selectionInvalid = true;
-
-    var overlay = document.getElementById('overlay');
-    if (overlay) overlay.classList.add('overlay-invalid');
-
-    var confirmBtn = document.getElementById('confirm-btn');
-    if (confirmBtn) confirmBtn.disabled = true;
-
-    var msg = document.getElementById('coverage-message');
-    
-    if (msg) {
-      msg.textContent = 'Chosen resolution not available in this region';
-      msg.style.display = 'block';
+  function snapIndexToTrackPct(idx) {
+    if (idx <= thresholdIndex) {
+      return (idx / thresholdIndex) * LEFT_SEGMENT_END_PCT;
+    } else {
+      return LEFT_SEGMENT_END_PCT + ((idx - thresholdIndex) / (lastIndex - thresholdIndex)) * (100 - LEFT_SEGMENT_END_PCT);
     }
-    // Grey out high-res buttons that aren't currently active
-    _highResKmSizes.forEach(function(km) {
-      var btn = document.querySelector('.size-btn[data-km="' + km + '"]');
-      if (btn && !btn.classList.contains('active')) btn.disabled = true;
+  }
+
+  function trackPctToSnapIndex(pct) {
+    var frac;
+    if (pct <= LEFT_SEGMENT_END_PCT) {
+      frac = (pct / LEFT_SEGMENT_END_PCT) * thresholdIndex;
+    } else {
+      frac = thresholdIndex + ((pct - LEFT_SEGMENT_END_PCT) / (100 - LEFT_SEGMENT_END_PCT)) * (lastIndex - thresholdIndex);
+    }
+    return Math.round(Math.min(Math.max(frac, 0), lastIndex));
+  }
+
+  function updateSegmentColours() {
+    var locked  = document.getElementById('seg-locked');
+    var avail   = document.getElementById('seg-available');
+    var userPct = snapIndexToTrackPct(_currentSnapIndex);
+    if (!locked || !avail) return;
+    if (_insideCoverage) {
+      locked.style.width = '0%';
+      avail.style.left   = '0%';
+      avail.style.width  = userPct + '%';
+      avail.style.borderRadius = '999px';
+    } else {
+      var lockPct = LEFT_SEGMENT_END_PCT;
+      locked.style.width = lockPct + '%';
+      if (userPct > lockPct) {
+        avail.style.left   = lockPct + '%';
+        avail.style.width  = (userPct - lockPct) + '%';
+        avail.style.borderRadius = '0 999px 999px 0';
+      } else {
+        avail.style.left  = userPct + '%';
+        avail.style.width = (lockPct - userPct) + '%';
+        avail.style.borderRadius = '0 999px 999px 0';
+      }
+    }
+  }
+
+  function updateGreyOverlay() {
+    updateSegmentColours();
+  }
+
+  function buildTicks() {
+    var tickRow = document.getElementById('slider-ticks');
+    if (!tickRow) return;
+    tickRow.innerHTML = '';
+    [{km: 2, label: '2 km', cls: ''}, {km: 25, label: '25 km', cls: 'threshold'},
+     {km: 100, label: '100 km', cls: ''}, {km: 200, label: '200 km', cls: ''}]
+    .forEach(function (t) {
+      var pct = snapIndexToTrackPct(SNAP_LIST.indexOf(t.km));
+      var div = document.createElement('div');
+      div.className = 'tick ' + t.cls;
+      div.style.left = pct + '%';
+      div.innerHTML = '<div class="tick-mark"></div><div class="tick-label">' + t.label + '</div>';
+      tickRow.appendChild(div);
     });
   }
 
-  // _applyClearState — the active size is valid for this location.
-  // Restores green overlay, enables Confirm, hides the coverage message.
-  function _applyClearState() {
-    window._selectionInvalid = false;
+  function initSlider() {
+    sliderEl = document.getElementById('area-slider');
+    if (!sliderEl) return;
+    noUiSlider.create(sliderEl, {
+      start: LEFT_SEGMENT_END_PCT,
+      step: 0.01,
+      range: { min: 0, max: 100 },
+      connect: [false, true]
+    });
+    var segLocked = document.createElement('div');
+    segLocked.id = 'seg-locked';
+    segLocked.style.cssText = 'position:absolute;top:0;left:0;height:100%;' +
+      'background:#555;border-radius:999px 0 0 999px;pointer-events:none;' +
+      'z-index:1;transition:width 0.15s;';
+    var segAvailable = document.createElement('div');
+    segAvailable.id = 'seg-available';
+    segAvailable.style.cssText = 'position:absolute;top:0;height:100%;' +
+      'background:#ccc;pointer-events:none;z-index:1;';
+    sliderEl.insertBefore(segLocked, sliderEl.firstChild);
+    sliderEl.insertBefore(segAvailable, sliderEl.firstChild);
+    var sliderLabel = document.createElement('div');
+    sliderLabel.id = 'slider-km-label';
+    sliderLabel.style.cssText = 'position:absolute;top:-28px;transform:translateX(-50%);font-size:14px;font-weight:600;color:#1a1a1a;white-space:nowrap;pointer-events:none;font-family:sans-serif;letter-spacing:0.01em;';
+    sliderEl.style.position = 'relative';
+    sliderEl.appendChild(sliderLabel);
+    sliderEl.noUiSlider.on('start', function () { _isDragging = true; });
+    sliderEl.noUiSlider.on('update', function (values) {
+      var pct = parseFloat(values[0]);
 
-    var overlay = document.getElementById('overlay');
-    if (overlay) overlay.classList.remove('overlay-invalid');
+      if (!_insideCoverage) {
+        if (!window._selectionInvalid) {
+          // Hard lock — user is in GLO-30 only area, never allow below threshold
+          if (pct < LEFT_SEGMENT_END_PCT - 0.05) {
+            pct = LEFT_SEGMENT_END_PCT;
+            if (_isDragging) sliderEl.noUiSlider.set(LEFT_SEGMENT_END_PCT);
+          }
+        } else {
+          // Red state — user is already below threshold, allow movement
+          // but re-engage hard lock the moment they reach 25km
+          if (pct >= LEFT_SEGMENT_END_PCT - 0.05) {
+            pct = LEFT_SEGMENT_END_PCT;
+            sliderEl.noUiSlider.set(LEFT_SEGMENT_END_PCT);
+            _currentSnapIndex = thresholdIndex;
+            window._currentAreaKm = HIGH_RES_THRESHOLD_KM;
+            _applyClearState();
+            updateGreyOverlay();
+            if (window._triggerOverlayUpdate) window._triggerOverlayUpdate();
+            if (window._triggerClipUpdate) window._triggerClipUpdate();
+            return;
+          }
+        }
+      }
 
-    var confirmBtn = document.getElementById('confirm-btn');
-    if (confirmBtn) confirmBtn.disabled = false;
-
-    var msg = document.getElementById('coverage-message');
-    if (msg) msg.style.display = 'none';
-    // Re-enable all high-res buttons now that coverage is available
-    
+      _currentSnapIndex = trackPctToSnapIndex(pct);
+      window._currentAreaKm = SNAP_LIST[_currentSnapIndex];
+      var pctForLabel = snapIndexToTrackPct(_currentSnapIndex);
+      var lbl = document.getElementById('slider-km-label');
+      if (lbl) {
+        lbl.style.left = pctForLabel + '%';
+        lbl.textContent = window._currentAreaKm < 10
+          ? window._currentAreaKm.toFixed(1) + ' km'
+          : window._currentAreaKm + ' km';
+      }
+      updateGreyOverlay();
+      _runCoverageCheck();
+      if (window._triggerOverlayUpdate) window._triggerOverlayUpdate();
+      if (window._triggerClipUpdate) window._triggerClipUpdate();
+    });
+    sliderEl.noUiSlider.on('change', function () {
+      _isDragging = false;
+      sliderEl.noUiSlider.set(snapIndexToTrackPct(_currentSnapIndex));
+      if (window._triggerAutoZoom) window._triggerAutoZoom();
+    });
+    setTimeout(buildTicks, 0);
+    updateGreyOverlay();
   }
 
-  // _updateSizeButtons — core logic, called on every map move and every size button click.
-  // Checks whether the map centre falls inside a coverage polygon, then updates
-  // window._currentDataset and applies the appropriate valid/invalid UI state.
-  function _updateSizeButtons(map, highResKmSizes) {
-    // Skip update while the select/confirm flow is active — selection.js has locked
-    // the UI and we must not interfere with its button states.
-    var confirmBtn = document.getElementById('confirm-btn');
-    if (confirmBtn && confirmBtn.disabled && !window._selectionInvalid) return;
-
-    var center = map.getCenter();
-    var lat = center.lat;
-    var lon = center.lng;
-
-    // Get the currently active area size from the active button.
-    var activeBtn = document.querySelector('.size-btn.active');
-    var activeKm = activeBtn ? activeBtn.dataset.km : null;
-    var highResKmSizesStr = highResKmSizes.map(String);
-    var activeIsHighRes = activeKm && highResKmSizesStr.indexOf(activeKm) !== -1;
-
-    // Check whether the map centre point falls inside any coverage polygon.
-    // Using centre-point rather than full bbox so that the dataset only activates
-    // when the customer is genuinely centred on the covered area.
-    var centrePoint = turf.point([lon, lat]);
+  function _runCoverageCheck() {
+    if (!_map) return;
+    var center = _map.getCenter();
+    var centrePoint = turf.point([center.lng, center.lat]);
     var matchedDataset = null;
     window._coveragePolygons.forEach(function (entry) {
       if (!matchedDataset && turf.booleanPointInPolygon(centrePoint, entry.geojson)) {
@@ -170,31 +188,82 @@
     });
 
     if (matchedDataset) {
-      // Centre is inside a high-res coverage area — the dataset is available.
+      _insideCoverage = true;
       window._currentDataset = matchedDataset;
-      // Re-enable high-res buttons — we have coverage here
-      _highResKmSizes.forEach(function(km) {
-        var btn = document.querySelector('.size-btn[data-km="' + km + '"]');
-        if (btn) btn.disabled = false;
-      });
       _applyClearState();
     } else {
-      // No coverage match at this location — fall back to GLO-30.
+      _insideCoverage = false;
       window._currentDataset = 'GLO-30';
-
-      if (activeIsHighRes) {
-        // The currently active size requires coverage we don't have here.
+      if (window._currentAreaKm < HIGH_RES_THRESHOLD_KM) {
         _applyInvalidState();
       } else {
-        // A non-high-res size is active — GLO-30 is fine, no invalid state.
-        // But still grey out high-res buttons since we're outside coverage.
-        _highResKmSizes.forEach(function(km) {
-          var btn = document.querySelector('.size-btn[data-km="' + km + '"]');
-          if (btn) btn.disabled = true;
-        });
         _applyClearState();
       }
     }
+    updateGreyOverlay();
+    updateSegmentColours();
   }
+
+  function _applyInvalidState() {
+    window._selectionInvalid = true;
+    var overlay = document.getElementById('overlay');
+    if (overlay) overlay.classList.add('overlay-invalid');
+    var confirmBtn = document.getElementById('confirm-btn');
+    if (confirmBtn) confirmBtn.disabled = true;
+    var msg = document.getElementById('coverage-message');
+    if (msg) {
+      msg.textContent = 'Chosen resolution not available in this region';
+      msg.style.display = 'block';
+    }
+  }
+
+  function _applyClearState() {
+    window._selectionInvalid = false;
+    var overlay = document.getElementById('overlay');
+    if (overlay) overlay.classList.remove('overlay-invalid');
+    var confirmBtn = document.getElementById('confirm-btn');
+    if (confirmBtn) confirmBtn.disabled = false;
+    var msg = document.getElementById('coverage-message');
+    if (msg) msg.style.display = 'none';
+  }
+
+  window.initCoverage = function (map) {
+    _map = map;
+
+    fetch('faroe_islands_coverage.geojson')
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('HTTP ' + res.status + ' fetching faroe_islands_coverage.geojson');
+        }
+        return res.json();
+      })
+      .then(function (geojson) {
+        var features = [];
+        if (geojson.type === 'FeatureCollection') {
+          features = geojson.features;
+        } else if (geojson.type === 'Feature') {
+          features = [geojson];
+        } else {
+          features = [{ type: 'Feature', geometry: geojson, properties: {} }];
+        }
+        features.forEach(function (feature) {
+          window._coveragePolygons.push({ dataset: 'FO-DEM', geojson: feature });
+        });
+        console.log('Coverage: loaded ' + window._coveragePolygons.length +
+                    ' polygon(s) for FO-DEM');
+        initSlider();
+        _runCoverageCheck();
+      })
+      .catch(function (err) {
+        console.error('Coverage: failed to load faroe_islands_coverage.geojson —', err.message);
+        console.error('Coverage: sizes below 25 km will be blocked outside coverage.');
+        initSlider();
+        _applyClearState();
+      });
+
+    map.on('move', function () {
+      _runCoverageCheck();
+    });
+  };
 
 }());

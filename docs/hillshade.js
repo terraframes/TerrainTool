@@ -13,7 +13,9 @@
       return;
     }
     // White background blocks the basemap beneath the clipped region completely.
-    hsDiv.style.backgroundColor = '#ebe0d5';
+    hsDiv.style.backgroundColor = '#ffffff';
+    hsDiv.style.opacity = '1';
+    hsDiv.style.mixBlendMode = 'multiply';
 
     // Second map instance — camera-synced, fully non-interactive.
     // interactive:false prevents Mapbox attaching any pointer/keyboard handlers.
@@ -62,7 +64,7 @@
             'hillshade-highlight-color':        '#ffffff',
             'hillshade-accent-color':           '#808080',
             'hillshade-illumination-direction': 315,
-            'hillshade-exaggeration':           0.9
+            'hillshade-exaggeration':           1
           }
         });
       } catch (e) {
@@ -84,6 +86,27 @@
       var bottom = window.innerHeight - top  - size;
       hsDiv.style.clipPath =
         'inset(' + top + 'px ' + right + 'px ' + bottom + 'px ' + left + 'px)';
+      var greyOverlay = document.getElementById('grey-overlay');
+      if (greyOverlay) {
+        greyOverlay.style.left   = left + 'px';
+        greyOverlay.style.top    = top + 'px';
+        greyOverlay.style.width  = size + 'px';
+        greyOverlay.style.height = size + 'px';
+      }
+      var softOverlay = document.getElementById('soft-overlay-1');
+      if (softOverlay) {
+        softOverlay.style.left   = left + 'px';
+        softOverlay.style.top    = top + 'px';
+        softOverlay.style.width  = size + 'px';
+        softOverlay.style.height = size + 'px';
+      }
+      var softOverlay2 = document.getElementById('soft-overlay-2');
+      if (softOverlay2) {
+        softOverlay2.style.left   = left + 'px';
+        softOverlay2.style.top    = top + 'px';
+        softOverlay2.style.width  = size + 'px';
+        softOverlay2.style.height = size + 'px';
+      }
     }
 
     // Sync the hillshade map camera to the bottom map instantly (no animation).
@@ -108,12 +131,7 @@
     // Set initial clip-path once the bottom map has loaded and updateOverlay()
     // has set overlay.style.width for the first time.
     map.on('load', updateClip);
-
-    // In explore mode a size-button click calls updateOverlay() but does not
-    // trigger a map move, so the clip-path needs an explicit nudge.
-    document.querySelectorAll('.size-btn').forEach(function (btn) {
-      btn.addEventListener('click', updateClip);
-    });
+    window._triggerClipUpdate = updateClip;
 
     // Pure greyscale — no CSS filter applied.
 

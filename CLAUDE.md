@@ -1,145 +1,95 @@
-# Terrain Print Tool
+# TerrainTool — Root CLAUDE.md
 
-A pipeline that converts a customer's geographic map selection into a 3D-printable terrain model.
-Windows 11 only. Python 3.11. See CURRENT.md for active module status.
+## Project
 
-## Project Structure
+E2E pipeline: customer map selection → 3D-printable terrain STL.
+Windows 11. Python 3.11. Blender 4.5 LTS. GDAL via QGIS only.
+
+## Critical Rules (never break these)
+
+- **GDAL via subprocess only** — `C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat`
+  Never `import osgeo` anywhere. Not in bpy, not in any module script.
+- **Google Shared Drive** — all Drive calls need:
+  `supportsAllDrives=True, includeItemsFromAllDrives=True, driveId, corpora='drive'`
+- **params.json is single source of truth** — all modules read from and write to it
+- **Drive holds params.json only** — all other files stay local at `E:\TerrainTool\orders\{order_number}\`
+- **Blender 4.5 LTS only** — not 5.x (breaking API changes)
+- **Files < 300 lines**
+- **Mapbox GL JS uses 512px tiles** → constant `78271.516` m/px, NOT `156543.03392`
+
+## Module Status
+
+| Module | Status |
+|--------|--------|
+| Module 4 — Blender displacement & export | COMPLETE |
+| Module 3 — Refinement addon | COMPLETE |
+| Module 2 — GLO-30 acquisition | COMPLETE |
+| Module 2b — Extended datasets (Faroe Islands) | COMPLETE |
+| Module 1 — Widget + webhook | In progress |
+| Operator Tool | In progress |
+
+## File Locations
 
 ```
 E:\TerrainTool\
-  CLAUDE.md              ← you are here
-  CURRENT.md             ← active module, current task, known issues
-  credentials\           ← service account keys (never commit)
-  orders\                ← one subfolder per order (local files only)
-  module1\               ← Mapbox widget + Shopify webhook
-  module2\               ← DEM data acquisition
-  module3\               ← Blender refinement addon
-  module4\               ← Blender displacement + export addon
+  orders\{order_number}\     local order files
+  datasets\                  local_datasets.json, coverage GeoJSONs, source DEMs
+  module1\                   Flask webhook (Railway)
+  module2\                   GLO-30 acquisition
+  module2b\                  Extended dataset acquisition
+  module3\terrain_export\    Blender addon (shared with module4)
+  module4\terrain_export\    Blender addon
+  operator_tool\             CustomTkinter desktop app
+  credentials\               gdrive_key.json — NEVER COMMIT
 ```
 
-## File Storage — Drive vs Local
+GitHub Pages: `/docs/` folder at repo root — widget files served from here.
+Railway: `/module1/` — Flask webhook.
 
-**Google Drive holds params.json only.** All other files are local only.
+## Blender Invocation Modes (NEVER CONFLATE)
 
-| File | Location |
-|------|----------|
-| params.json | Google Drive: orders/{order_number}/ |
-| raw_dem.tif | Local: E:\TerrainTool\orders\{order_number}\ |
-| resampled.tif | Local: E:\TerrainTool\orders\{order_number}\ |
-| displaced.obj | Local: E:\TerrainTool\orders\{order_number}\ |
-| simplified.obj | Local: E:\TerrainTool\orders\{order_number}\ |
-| final.stl | Local: E:\TerrainTool\orders\{order_number}\ |
+1. **With UI** — mandatory manual refinement (Module 3). Operator reviews, adjusts, saves.
+2. **Headless** (`--background`) — automated Bake & Export (Module 4). Not yet wired from operator tool.
 
-**Pending order detection:** params.json on Drive AND raw_dem.tif absent locally.
+## Key Technical Decisions
 
-## Build Order
+### Mapbox Tile Constant
+Mapbox GL JS uses 512×512 pixel tiles.
+Pixel formula: `pixel_size = (area_km * 1000) / ((78271.516 * cos(lat)) / 2^zoom)`
+The old value 156543.03392 is for 256px tiles (legacy Google Maps) — produces half-size boxes.
 
-| Priority | Module | Status |
-|----------|--------|--------|
-| 1st | Module 4 — Blender displacement & export | COMPLETE |
-| 2nd | Module 3 — Blender refinement addon | COMPLETE |
-| 3rd | Module 2 — DEM acquisition | In progress — Sessions 1 & 2 done |
-| 4th | Module 1 — Widget + Shopify | Not started |
+### nodata Handling
+- Always use exact float: `3.3999999521443642e+38` (NOT `3.4e+38`) for Faroe Islands
+- Use `repr(nodata_value)` in subprocess string interpolation
+- `nodata_fill: "zero"` for coastal/island DEMs — ocean = sea level, not interpolated
+- `nodata_fill: "interpolate"` for land DEMs with scan gaps
+- resample.py guard: if band nodata == 0.0, skip gdal.FillNodata entirely
 
-## Non-Negotiable Technical Rules
+### processing_status in params.json
+- `"ready"` or absent: Module 3 proceeds normally
+- `"pending_lidar_review"`: Module 3 blocks load
+- `"needs_manual_processing"`: Module 3 blocks load
 
-- **NEVER import osgeo anywhere.** GDAL is never installed via pip on this machine.
-  All GDAL operations call the QGIS Python executable via subprocess:
-  `C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat`
-- **NEVER write raw_dem.tif (or any processed file) to Google Drive.**
-  Drive holds params.json only.
-- **params.json is the single source of truth.** Never hardcode values from it.
-- **setup.py runs first on every machine.** Check for setup_complete.txt at startup.
-- **Print clear plain-English error messages. Never fail silently.**
-- **Keep files under 300 lines.** Split into helper files if needed.
+### Continuous Area Slider (planned, Module 1)
+- Library: noUiSlider
+- `const HIGH_RES_THRESHOLD_KM = 25` — named constant
+- `SNAP_LIST` array defines all available sizes — 25 must always be present
+- Track left of 25km: grey/blocked unless inside coverage polygon
+- slider.updateOptions() on every map move
+- update event: no auto-zoom; change event: auto-zoom
 
-## params.json Schema (contract between all modules)
-
-```json
-{
-  "order_number": "10042",
-  "bbox": { "min_lat": 0.0, "max_lat": 0.0, "min_lon": 0.0, "max_lon": 0.0 },
-  "center_lat": 0.0,
-  "center_lon": 0.0,
-  "area_km": 50,
-  "dataset": "GLO-30",
-  "dem_resolution_m": 30,
-  "elevation_min_m": 0.0,
-  "elevation_max_m": 0.0,
-  "min_clamp": 0.0,
-  "max_clamp": 1.0,
-  "gamma": 1.0,
-  "displacement_scale": 0.3,
-  "print_size_mm": 200,
-  "base_thickness_mm": 10,
-  "subdivision_level": 1024,
-  "target_triangles": 1000000
-}
-```
-
-## Credentials & Services
-
-- Google Cloud project: terraintool
-- Service account: terraintool-orders@terraintool.iam.gserviceaccount.com
-- Credentials file: E:\TerrainTool\credentials\gdrive_key.json
-- Copernicus S3 endpoint: https://eodata.dataspace.copernicus.eu, bucket: eodata
-- S3 credentials page: s3-credentials.dataspace.copernicus.eu (regenerate before expiry)
-
-## Environment Variables
-
-Set via setx in setup.py. Never hardcode.
-- `GDRIVE_KEY_PATH` — E:\TerrainTool\credentials\gdrive_key.json
-- `OPENTOPO_API_KEY` — OpenTopography API key
-- `CDSE_S3_KEY` — Copernicus S3 access key ID (replaces CDSE_USER)
-- `CDSE_S3_SECRET` — Copernicus S3 secret access key (replaces CDSE_PASS)
-- Mapbox token — JS constant in widget HTML only, not an env var
-
-Note: CDSE_USER and CDSE_PASS are no longer used anywhere.
-
-## EEA-39 Dataset Threshold
-
-European detection uses bounding box approximation (eea39_bbox.py — no GeoJSON needed).
-- European AND area_km <= 25 → GLO-10 (Copernicus S3, 10m)
-- European AND area_km > 25 → GLO-30 (OpenTopography, 30m)
-- Non-European → GLO-30
-
-## Setup System
-
-Each module: setup.py + requirements.txt + README.txt.
-setup.py uses winget for Python 3.11, Blender 4.5 LTS (modules 3/4), Node.js (module 1).
-Modules 2/3 setup.py also verifies QGIS bat file exists and osgeo imports from it.
-
-@CURRENT.md
-
-## Future High-Resolution Dataset Architecture
-
-When high-res datasets are added (LiDAR, national DEMs), these rules apply:
+## Future High-Res Dataset Architecture
 
 ### Coverage Polygons
-- Each dataset has a coverage GeoJSON bundled with the widget
-- Derived from the dataset's tile index (not country boundary) — handles partial coverage correctly
-- Water tiles included in coverage (treated as elevation 0 by gdal_fillnodata)
-- Manually editable in QGIS at any time — just replace the file
-- Widget checks union of all coverage polygons at the requested resolution tier
-- Turf.js handles polygon union client-side on every camera move
+- Derived from tile index (not country boundary)
+- Manually editable GeoJSON files bundled with widget
+- Widget uses Turf.js union of all polygons to determine available sizes
 
 ### Cross-Border Orders
-- If bbox spans two different high-res dataset areas: set processing_status = "needs_manual_processing" in params.json
-- Do NOT fall back to GLO-30 silently — customer paid for a specific resolution
-- Operator handles manually until automated multi-source merge is built
+- If bbox spans two high-res datasets: set processing_status = "needs_manual_processing"
+- NEVER fall back to GLO-30 silently on a paid high-res order
 
-### params.json Status Field (future)
-"processing_status": "ready" | "pending_lidar_review" | "needs_manual_processing"
-Module 3 will check this and refuse to process until status = "ready"
-
-### Dataset Routing (future)
+### Routing (future)
 Priority-ordered selector, not if/else chains:
-1. Check high-res coverage (LiDAR etc.) for bbox — all four corners in union polygon?
-2. Check medium-res national DEM coverage
-3. Fall back to GLO-30
-
-### LiDAR Pipeline (Sweden, when built)
-Module 2: download LAZ tiles → flag pending_lidar_review
-QGIS step: operator reviews point cloud, rasterises full tile area → raw_dem_full.tif
-gdalwarp crops to bbox → raw_dem.tif → normal Module 3/4 flow
-Coordinate system: SWEREF99TM (EPSG:3006) → resample.py reprojects to EPSG:4326 already
+1. High-res datasets (LiDAR etc.) if bbox inside coverage
+2. GLO-30 fallback

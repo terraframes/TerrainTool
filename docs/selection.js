@@ -16,7 +16,6 @@
       } catch (e) {
         console.error('Select: could not lock map interactions —', e.message);
       }
-      document.querySelectorAll('.size-btn').forEach(function (b) { b.disabled = true; });
       document.getElementById('search-input').disabled = true;
       document.getElementById('search-btn').disabled = true;
     }
@@ -30,7 +29,6 @@
       } catch (e) {
         console.error('Cancel: could not re-enable map interactions —', e.message);
       }
-      document.querySelectorAll('.size-btn').forEach(function (b) { b.disabled = false; });
       document.getElementById('search-input').disabled = false;
       document.getElementById('search-btn').disabled = false;
     }
