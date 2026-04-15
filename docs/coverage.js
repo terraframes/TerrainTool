@@ -121,7 +121,7 @@
     sliderEl.insertBefore(segAvailable, sliderEl.firstChild);
     var sliderLabel = document.createElement('div');
     sliderLabel.id = 'slider-km-label';
-    sliderLabel.style.cssText = 'position:absolute;top:-28px;transform:translateX(-50%);font-size:14px;font-weight:600;color:#1a1a1a;white-space:nowrap;pointer-events:none;font-family:sans-serif;letter-spacing:0.01em;';
+    sliderLabel.style.cssText = 'position:absolute;top:-28px;transform:translateX(-50%);font-size:16px;font-weight:600;color:#ffffff;white-space:nowrap;pointer-events:none;font-family:sans-serif;letter-spacing:0.01em;text-shadow:-1px -1px 0 #505050,1px -1px 0 #505050,-1px 1px 0 #505050,1px 1px 0 #505050;';
     sliderEl.style.position = 'relative';
     sliderEl.appendChild(sliderLabel);
     sliderEl.noUiSlider.on('start', function () { _isDragging = true; });
@@ -139,8 +139,6 @@
           // Red state — user is already below threshold, allow movement
           // but re-engage hard lock the moment they reach 25km
           if (pct >= LEFT_SEGMENT_END_PCT - 0.05) {
-            pct = LEFT_SEGMENT_END_PCT;
-            sliderEl.noUiSlider.set(LEFT_SEGMENT_END_PCT);
             _currentSnapIndex = thresholdIndex;
             window._currentAreaKm = HIGH_RES_THRESHOLD_KM;
             _applyClearState();
