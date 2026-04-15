@@ -191,6 +191,11 @@
   <div id="grey-overlay" style="position:absolute; pointer-events:none; mix-blend-mode:color; background:#808080; z-index:2;"></div>
   <div id="soft-overlay-1" style="position:absolute; pointer-events:none; mix-blend-mode:soft-light; background:#ffffff; z-index:3;"></div>
   <div id="soft-overlay-2" style="position:absolute; pointer-events:none; mix-blend-mode:soft-light; background:#e7e7e7; z-index:4;"></div>
+  <script>
+  if (/Mobi|Android/i.test(navigator.userAgent)) {
+    document.getElementById('soft-overlay-2').style.display = 'none';
+  }
+</script>
 </div>
 <div id="overlay">
   <div id="overlay-invalid-fill"></div>
