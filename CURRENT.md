@@ -1,51 +1,67 @@
 # Current Work State
 
 ## Active Module
-No active build — all implemented items working.
-Next: Coverage info overlay (Section 8.3), or operator tool improvements.
+No active build. Next: offline QGIS pre-processing (LU, BE) or widget bbox upgrade.
 
 ## What Is Built
 
 ### Module 4 — COMPLETE
-### Module 3 — COMPLETE (processing_status guard, nodata 0.0 guard)
-### Module 2 — COMPLETE (GLO-30, Shared Drive, --sync-only, --order)
-### Module 2b — COMPLETE (Faroe Islands, real order end-to-end confirmed)
-### Module 1 — Stages 1–3 complete + slider built
-  - Tile constant fixed: 78271.516 (512px tiles)
-  - Continuous area slider: noUiSlider 15.7.1, SNAP_LIST, two-segment mapping
-  - Three coverage states: GLO-30 only / inside coverage / red state
-  - coverage.js fully rewritten, hillshade.js and selection.js updated
+### Module 3 — COMPLETE
+### Module 2 — COMPLETE
+### Module 2b — COMPLETE (FO-DEM local_raster)
+### Module 1 — Stages 1–3 + slider built
 ### Operator Tool — Full end-to-end working
 
-## Remaining Work
+## Dataset Architecture Decisions Made
 
-### Widget
-1. Coverage info overlay (Section 8.3)
-2. Stage 4: real Shopify checkout
+- Priority register finalised (see root CLAUDE.md)
+- Two registry files: local_datasets.json (exists) + api_datasets.json (to create)
+- Offline pre-processing for LU and BE: local_raster entries, one-time QGIS work
+- Tiled local datasets (SE if LiDAR not yet built): 100×100km tiles, SW corner naming convention
+- Priority integers must stay in sync between both registries and widget
 
-### Operator Tool
-1. Status auto-refresh after Blender closes
-2. Manual order entry
-3. Archive tab
-4. PyInstaller .exe
-5. Headless Blender export (--background)
-6. Dataset column width (80 → 110px, cosmetic)
+## Immediate Next Steps
 
-### Future Datasets
-- Lantmäteriet Laserdata Skog (CC0, FTP)
+### Option A: Offline pre-processing (no code changes needed)
+1. Luxembourg: download source, rasterise/reproject/compress → LU_2m_merged.tif
+   Add entry to local_datasets.json with priority=18
+2. Belgium: download Flanders + Wallonia + Brussels, mosaic → BE_2m_merged.tif
+   Add entry to local_datasets.json with priority=17
+3. Denmark: assess local_raster vs api_wcs based on file size
 
-## Key Decisions Made
+### Option B: Widget bbox upgrade (prerequisite for NZ-DSM + multi-dataset)
+1. Compute bbox live in coverage.js on every map move + slider change
+2. Switch to turf.booleanContains(coveragePolygon, bboxPolygon)
+3. Load all coverage GeoJSONs on init, iterate in priority order
+4. Display winning dataset name in UI
+5. Write winning dataset to confirm payload (no recomputation)
 
-- Two-segment track: LEFT_SEGMENT_END_PCT = 25 (left 25% = 2–25km, right 75% = 25–200km)
-- snapIndexToTrackPct() / trackPctToSnapIndex() handle the mapping
-- Hard lock: handle cannot enter left segment when outside coverage
-- Red state: fires when panning outside coverage while handle < 25km
-- No force-snap on drag release in red state — user acts when ready
-- Hard lock re-engages at 25km if user drags toward it from red state
-- update event: no auto-zoom; change event (drag end): snap + auto-zoom
-- window._triggerClipUpdate exposed from hillshade.js
-- window._currentAreaKm used by widget.html (removed local area_km variable)
-- initCoverage(map, []) — empty array passed from widget.html
+### Option C: First api_wcs dataset (NL-AHN4)
+- Create api_datasets.json
+- Build api_wcs handler in acquire_extended.py
+- WCS endpoint: https://service.pdok.nl/rws/ahn/wcs/v1_0
+- Coverage: dsm_05m, EPSG:28992, nodata 3.4028235e+38, CC-0
+
+## Research Still Required
+
+- NO-DOM: confirm DSM (not DTM) endpoint; confirm CC-BY-4.0 for commercial derived products
+- EN-EA: confirm OGL commercial use; confirm programmatic tile access still works
+- DK-DHM: set up Datafordeler API key before June 2026 web login phaseout
+- BE-DHMV: confirm Wallonia + Brussels available for mosaic
+- CZ-DMP, ES-PNOA, FI-MML, LU-LIDAR: confirm commercial licence
+- Switzerland, France: likely blocked — verify
+- Scotland/Wales: confirm same EA pattern as England
+- NZ coverage GeoJSON: author in QGIS before NZ-DSM launches
+
+## Remaining Operator Tool Work
+
+- Status auto-refresh after Blender closes
+- Manual order entry
+- Archive tab
+- PyInstaller .exe
+- Headless Blender export (--background)
+- Show which dataset was used per order (useful once multi-dataset live)
+- Dataset column width (80 → 110px, cosmetic)
 
 ---
 *Update this file at the end of every Claude Code session.*

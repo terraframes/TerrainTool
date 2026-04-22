@@ -1,0 +1,9 @@
+[
+  { "emoji": "🌍", "region": "Arctic (≥60°N)", "status": "Full mosaic coverage", "source": ["Polar Geospatial Center"] },
+  {
+    "emoji": "🇫🇴",
+    "region": "Faroe Islands",
+    "status": "Full coverage",
+    "source": ["Umhvørvisstovan"]
+  }
+]

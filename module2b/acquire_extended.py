@@ -14,6 +14,7 @@ DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 LOCAL_ORDERS_ROOT = r"E:\TerrainTool\orders"
 QGIS_PYTHON = r"C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat"
 LOCAL_DATASETS_JSON = r"E:\TerrainTool\datasets\local_datasets.json"
+API_DATASETS_JSON = r"E:\TerrainTool\datasets\api_datasets.json"
 SETUP_DIR = os.path.dirname(os.path.abspath(__file__))
 SETUP_COMPLETE = os.path.join(SETUP_DIR, "setup_complete.txt")
 
@@ -240,24 +241,46 @@ def main():
         with open(LOCAL_DATASETS_JSON, "r", encoding="utf-8") as f:
             local_datasets = json.load(f)
 
-        # Import clip_local_dem from this same module2b folder
+        if os.path.isfile(API_DATASETS_JSON):
+            with open(API_DATASETS_JSON, "r", encoding="utf-8") as f:
+                api_datasets = json.load(f)
+        else:
+            api_datasets = {}
+
+        # local_datasets wins on key collision — matches priority system intent
+        datasets = {**api_datasets, **local_datasets}
+
+        # Import handlers from this same module2b folder
         sys.path.insert(0, SETUP_DIR)
-        from local_clip import clip_local_dem  # noqa: E402
+        from local_clip import clip_local_dem        # noqa: E402
+        from acquire_tiled import acquire_tiled_dem  # noqa: E402
 
         for order_number, params in pending:
             dataset = params.get("dataset", "")
-            if dataset in local_datasets:
-                # Local raster dataset — clip source DEM to bbox
+            if dataset not in datasets:
+                print(f"  [{order_number}] ERROR: Unknown dataset '{dataset}'.")
+                print(f"  [{order_number}]   Known datasets: {list(datasets.keys())}")
+                dem_failed.append(order_number)
+                continue
+
+            ds_entry = datasets[dataset]
+            ds_type = ds_entry.get("type", "")
+
+            if ds_type == "local_raster":
                 print(f"\n  [{order_number}] Routing to local_clip (dataset: {dataset})")
-                if clip_local_dem(params, order_number):
-                    update_processing_status(order_number, "ready")
-                    dem_ok.append(order_number)
-                else:
-                    dem_failed.append(order_number)
+                success = clip_local_dem(params, order_number)
+            elif ds_type == "api_tiled":
+                print(f"\n  [{order_number}] Routing to acquire_tiled (dataset: {dataset})")
+                success = acquire_tiled_dem(params, order_number, ds_entry)
             else:
-                # Dataset key not in registry — no handler implemented yet
-                print(f"  [{order_number}] ERROR: Dataset '{dataset}' is not yet implemented in Module 2b.")
-                print(f"  [{order_number}]   Known local datasets: {list(local_datasets.keys())}")
+                print(f"  [{order_number}] ERROR: Dataset type '{ds_type}' is not yet implemented.")
+                dem_failed.append(order_number)
+                continue
+
+            if success:
+                update_processing_status(order_number, "ready")
+                dem_ok.append(order_number)
+            else:
                 dem_failed.append(order_number)
 
     # ── Summary ───────────────────────────────────────────────────────────────

@@ -29,8 +29,11 @@
   var _currentSnapIndex = thresholdIndex;
   var _isDragging = false;
   var _insideCoverage = false;
+  var _coverageReady = false;
   var _map = null;
   var sliderEl = null;
+  var _lockFeedbackActive = false;
+  var _tooltipTimer = null;
 
   window.getDatasetForCurrentSelection = function () {
     return window._currentDataset || 'GLO-30';
@@ -83,6 +86,27 @@
     updateSegmentColours();
   }
 
+  function _showLockFeedback() {
+    var handle = sliderEl && sliderEl.querySelector('.noUi-handle');
+    var tooltip = document.getElementById('slider-lock-tooltip');
+    if (handle && !_lockFeedbackActive) {
+      _lockFeedbackActive = true;
+      handle.classList.add('handle-shake');
+      setTimeout(function () {
+        handle.classList.remove('handle-shake');
+        _lockFeedbackActive = false;
+      }, 400);
+    }
+    if (tooltip) {
+      tooltip.style.opacity = '1';
+      if (_tooltipTimer) clearTimeout(_tooltipTimer);
+      _tooltipTimer = setTimeout(function () {
+        tooltip.style.opacity = '0';
+        _tooltipTimer = null;
+      }, 2500);
+    }
+  }
+
   function buildTicks() {
     var tickRow = document.getElementById('slider-ticks');
     if (!tickRow) return;
@@ -124,16 +148,25 @@
     sliderLabel.style.cssText = 'position:absolute;top:-28px;transform:translateX(-50%);font-size:16px;font-weight:600;color:#ffffff;white-space:nowrap;pointer-events:none;font-family:sans-serif;letter-spacing:0.01em;text-shadow:-1px -1px 0 #505050,1px -1px 0 #505050,-1px 1px 0 #505050,1px 1px 0 #505050;';
     sliderEl.style.position = 'relative';
     sliderEl.appendChild(sliderLabel);
+    var lockTooltip = document.createElement('div');
+    lockTooltip.id = 'slider-lock-tooltip';
+    lockTooltip.textContent = 'Not available for this region';
+    lockTooltip.style.left = LEFT_SEGMENT_END_PCT + '%';
+    lockTooltip.style.top = '-58px';
+    sliderEl.appendChild(lockTooltip);
     sliderEl.noUiSlider.on('start', function () { _isDragging = true; });
     sliderEl.noUiSlider.on('update', function (values) {
       var pct = parseFloat(values[0]);
 
-      if (!_insideCoverage) {
+      if (_coverageReady && !_insideCoverage) {
         if (!window._selectionInvalid) {
           // Hard lock — user is in GLO-30 only area, never allow below threshold
           if (pct < LEFT_SEGMENT_END_PCT - 0.05) {
             pct = LEFT_SEGMENT_END_PCT;
-            if (_isDragging) sliderEl.noUiSlider.set(LEFT_SEGMENT_END_PCT);
+            if (_isDragging) {
+              sliderEl.noUiSlider.set(LEFT_SEGMENT_END_PCT);
+              _showLockFeedback();
+            }
           }
         } else {
           // Red state — user is already below threshold, allow movement
@@ -161,7 +194,7 @@
           : window._currentAreaKm + ' km';
       }
       updateGreyOverlay();
-      _runCoverageCheck();
+      if (_coverageReady) _runCoverageCheck();
       if (window._triggerOverlayUpdate) window._triggerOverlayUpdate();
       if (window._triggerClipUpdate) window._triggerClipUpdate();
     });
@@ -174,13 +207,40 @@
     updateGreyOverlay();
   }
 
+  function _getBboxPolygon(centre, area_km) {
+    var R    = 6371;
+    var half = area_km / 2;
+    var d    = half / R;
+    var φ1   = centre.lat * Math.PI / 180;
+    var λ1   = centre.lng * Math.PI / 180;
+    function dest(bearing_deg) {
+      var θ  = bearing_deg * Math.PI / 180;
+      var φ2 = Math.asin(Math.sin(φ1) * Math.cos(d) +
+                         Math.cos(φ1) * Math.sin(d) * Math.cos(θ));
+      var λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(d) * Math.cos(φ1),
+                                Math.cos(d) - Math.sin(φ1) * Math.sin(φ2));
+      return { lat: φ2 * 180 / Math.PI, lon: λ2 * 180 / Math.PI };
+    }
+    var north = dest(0);
+    var south = dest(180);
+    var east  = dest(90);
+    var west  = dest(270);
+    return turf.polygon([[
+      [west.lon,  north.lat],
+      [east.lon,  north.lat],
+      [east.lon,  south.lat],
+      [west.lon,  south.lat],
+      [west.lon,  north.lat]
+    ]]);
+  }
+
   function _runCoverageCheck() {
-    if (!_map) return;
+    if (!_map || !_coverageReady) return;
     var center = _map.getCenter();
-    var centrePoint = turf.point([center.lng, center.lat]);
+    var bboxPolygon = _getBboxPolygon(center, window._currentAreaKm);
     var matchedDataset = null;
     window._coveragePolygons.forEach(function (entry) {
-      if (!matchedDataset && turf.booleanPointInPolygon(centrePoint, entry.geojson)) {
+      if (!matchedDataset && turf.booleanContains(entry.geojson, bboxPolygon)) {
         matchedDataset = entry.dataset;
       }
     });
@@ -228,36 +288,42 @@
   window.initCoverage = function (map) {
     _map = map;
 
-    fetch('faroe_islands_coverage.geojson')
-      .then(function (res) {
-        if (!res.ok) {
-          throw new Error('HTTP ' + res.status + ' fetching faroe_islands_coverage.geojson');
-        }
-        return res.json();
-      })
-      .then(function (geojson) {
-        var features = [];
-        if (geojson.type === 'FeatureCollection') {
-          features = geojson.features;
-        } else if (geojson.type === 'Feature') {
-          features = [geojson];
-        } else {
-          features = [{ type: 'Feature', geometry: geojson, properties: {} }];
-        }
-        features.forEach(function (feature) {
-          window._coveragePolygons.push({ dataset: 'FO-DEM', geojson: feature });
+    var DATASETS = [
+      { key: 'ArcticDEM', geojson: 'arcticdem_coverage.geojson' },
+      { key: 'FO-DEM',    geojson: 'faroe_islands_coverage.geojson' }
+    ];
+
+    var fetches = DATASETS.map(function (ds) {
+      return fetch(ds.geojson)
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status + ' fetching ' + ds.geojson);
+          return res.json();
+        })
+        .then(function (geojson) {
+          var features = [];
+          if (geojson.type === 'FeatureCollection') {
+            features = geojson.features;
+          } else if (geojson.type === 'Feature') {
+            features = [geojson];
+          } else {
+            features = [{ type: 'Feature', geometry: geojson, properties: {} }];
+          }
+          features.forEach(function (feature) {
+            window._coveragePolygons.push({ dataset: ds.key, geojson: feature });
+          });
+          console.log('Coverage: loaded ' + features.length + ' polygon(s) for ' + ds.key);
+        })
+        .catch(function (err) {
+          console.error('Coverage: failed to load ' + ds.geojson + ' —', err.message);
         });
-        console.log('Coverage: loaded ' + window._coveragePolygons.length +
-                    ' polygon(s) for FO-DEM');
-        initSlider();
-        _runCoverageCheck();
-      })
-      .catch(function (err) {
-        console.error('Coverage: failed to load faroe_islands_coverage.geojson —', err.message);
-        console.error('Coverage: sizes below 25 km will be blocked outside coverage.');
-        initSlider();
-        _applyClearState();
-      });
+    });
+
+    Promise.all(fetches).then(function () {
+      _coverageReady = true;
+      _runCoverageCheck();
+    });
+
+    initSlider();
 
     map.on('move', function () {
       _runCoverageCheck();

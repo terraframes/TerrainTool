@@ -8,14 +8,13 @@ Windows 11. Python 3.11. Blender 4.5 LTS. GDAL via QGIS only.
 ## Critical Rules (never break these)
 
 - **GDAL via subprocess only** — `C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat`
-  Never `import osgeo` anywhere. Not in bpy, not in any module script.
 - **Google Shared Drive** — all Drive calls need:
   `supportsAllDrives=True, includeItemsFromAllDrives=True, driveId, corpora='drive'`
-- **params.json is single source of truth** — all modules read from and write to it
-- **Drive holds params.json only** — all other files stay local at `E:\TerrainTool\orders\{order_number}\`
-- **Blender 4.5 LTS only** — not 5.x (breaking API changes)
+- **params.json is single source of truth** across all modules
+- **Drive holds params.json only** — all other files local at `E:\TerrainTool\orders\{order_number}\`
+- **Blender 4.5 LTS only** — not 5.x
 - **Files < 300 lines**
-- **Mapbox GL JS uses 512px tiles** → constant `78271.516` m/px, NOT `156543.03392`
+- **Mapbox GL JS uses 512px tiles** → constant `78271.516`, NOT `156543.03392`
 
 ## Module Status
 
@@ -28,68 +27,61 @@ Windows 11. Python 3.11. Blender 4.5 LTS. GDAL via QGIS only.
 | Module 1 — Widget + webhook | In progress |
 | Operator Tool | In progress |
 
-## File Locations
+## Dataset Priority Register
 
-```
-E:\TerrainTool\
-  orders\{order_number}\     local order files
-  datasets\                  local_datasets.json, coverage GeoJSONs, source DEMs
-  module1\                   Flask webhook (Railway)
-  module2\                   GLO-30 acquisition
-  module2b\                  Extended dataset acquisition
-  module3\terrain_export\    Blender addon (shared with module4)
-  module4\terrain_export\    Blender addon
-  operator_tool\             CustomTkinter desktop app
-  credentials\               gdrive_key.json — NEVER COMMIT
-```
+| Priority | Key | Pipeline | Notes |
+|----------|-----|----------|-------|
+| 1 | ArcticDEM | api_tiled | Best Arctic, no local storage |
+| 10 | FO-DEM | local_raster | Complete |
+| 11 | NL-AHN4 | api_wcs | First to build |
+| 12 | NZ-DSM | api_tiled | Widget bbox check required first |
+| 13 | EN-EA | api_tiled | |
+| 14 | DK-DHM | api_wcs | API key needed |
+| 15 | NO-DOM | api_wcs | |
+| 16 | SE-LiDAR | LiDAR pipeline | |
+| 17 | BE-merged | local_raster | Offline QGIS mosaic |
+| 18 | LU | local_raster | Offline QGIS mosaic |
+| 19 | ES-PNOA | LiDAR pipeline | |
+| 20 | FI-MML | LiDAR pipeline | |
+| 21 | CZ-DMP | api_tiled | |
+| 99 | GLO-30 | Module 2 | Global fallback |
 
-GitHub Pages: `/docs/` folder at repo root — widget files served from here.
-Railway: `/module1/` — Flask webhook.
+Priority integers must stay in sync between local_datasets.json, api_datasets.json, and widget.
 
-## Blender Invocation Modes (NEVER CONFLATE)
+## Dataset Registry Files
 
-1. **With UI** — mandatory manual refinement (Module 3). Operator reviews, adjusts, saves.
-2. **Headless** (`--background`) — automated Bake & Export (Module 4). Not yet wired from operator tool.
+- **local_datasets.json** — local_raster type. Fields: path, coverage, resolution_m, epsg, nodata, nodata_fill, type, dsm, priority.
+- **api_datasets.json** (to be created) — api_wcs and api_tiled types. Fields: endpoint/bucket, coverage, resolution_m, crs, nodata, type, dsm, priority, plus type-specific (wcs_layer / stac_catalog_url).
+
+## Coverage GeoJSON Authoring — Two Types
+
+**Simple survey union** (continental datasets): tile index → union → simplify ~500m → EPSG:4326.
+**Island/coastal** (NZ, Faroe Islands done): QGIS manual — survey index union + ocean buffer (50km OK) + dissolve + simplify + export. Stay in vector.
+
+## Widget Coverage Check — Planned Upgrade
+
+Current: centre-point-in-polygon.
+Required before NZ-DSM or any fragmented dataset:
+- Compute bbox live on every map move + slider change
+- Switch to `turf.booleanContains(coveragePolygon, bboxPolygon)`
+- Iterate datasets in priority order, display winning dataset name in UI
+Hard prerequisite — do not skip.
 
 ## Key Technical Decisions
 
 ### Mapbox Tile Constant
-Mapbox GL JS uses 512×512 pixel tiles.
-Pixel formula: `pixel_size = (area_km * 1000) / ((78271.516 * cos(lat)) / 2^zoom)`
-The old value 156543.03392 is for 256px tiles (legacy Google Maps) — produces half-size boxes.
+Formula: `pixel_size = (area_km * 1000) / ((78271.516 * cos(lat)) / 2^zoom)`
 
 ### nodata Handling
-- Always use exact float: `3.3999999521443642e+38` (NOT `3.4e+38`) for Faroe Islands
-- Use `repr(nodata_value)` in subprocess string interpolation
-- `nodata_fill: "zero"` for coastal/island DEMs — ocean = sea level, not interpolated
-- `nodata_fill: "interpolate"` for land DEMs with scan gaps
-- resample.py guard: if band nodata == 0.0, skip gdal.FillNodata entirely
+- Exact float: `3.3999999521443642e+38` for FO-DEM (not 3.4e+38)
+- `repr(nodata_value)` in subprocess strings
+- `nodata_fill: "zero"` for coastal DEMs; `"interpolate"` for land DEMs
+- resample.py guard: skip gdal.FillNodata if band nodata == 0.0
 
-### processing_status in params.json
-- `"ready"` or absent: Module 3 proceeds normally
-- `"pending_lidar_review"`: Module 3 blocks load
-- `"needs_manual_processing"`: Module 3 blocks load
+### processing_status
+- absent or `"ready"` → proceed; `"pending_lidar_review"` or `"needs_manual_processing"` → block
 
-### Continuous Area Slider (planned, Module 1)
-- Library: noUiSlider
-- `const HIGH_RES_THRESHOLD_KM = 25` — named constant
-- `SNAP_LIST` array defines all available sizes — 25 must always be present
-- Track left of 25km: grey/blocked unless inside coverage polygon
-- slider.updateOptions() on every map move
-- update event: no auto-zoom; change event: auto-zoom
-
-## Future High-Res Dataset Architecture
-
-### Coverage Polygons
-- Derived from tile index (not country boundary)
-- Manually editable GeoJSON files bundled with widget
-- Widget uses Turf.js union of all polygons to determine available sizes
-
-### Cross-Border Orders
-- If bbox spans two high-res datasets: set processing_status = "needs_manual_processing"
-- NEVER fall back to GLO-30 silently on a paid high-res order
-
-### Routing (future)
-Priority-ordered selector, not if/else chains:
-1. High-res datasets (LiDAR etc.) if bbox inside coverage
-2. GLO-30 fallback
+### Slider (Module 1)
+- `HIGH_RES_THRESHOLD_KM = 25`, `LEFT_SEGMENT_END_PCT = 25`
+- `SNAP_LIST` defines all sizes — 25 must always be present
+- update event: no auto-zoom. change event: snap + auto-zoom.
