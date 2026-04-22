@@ -1,6 +1,6 @@
 # Module 2b — Extended Dataset Acquisition
 
-**STATUS: COMPLETE. Real order end-to-end confirmed with clean terrain.**
+**STATUS: COMPLETE for local_raster (FO-DEM). api_wcs, api_tiled, LiDAR pipeline not yet built.**
 
 ## Location
 
@@ -10,78 +10,67 @@
 
 ```
 module2b\
-  local_clip.py         clips source DEM, reprojects, branches on nodata_fill
+  local_clip.py         clips stored GeoTIFF to bbox, reprojects, nodata_fill branch
   acquire_extended.py   scans Drive for non-GLO-30 orders, routes to handler
   setup.py / requirements.txt / README.txt
 ```
 
-## Datasets Registry
+## Dataset Registries
 
-`E:\TerrainTool\datasets\local_datasets.json`
+**local_datasets.json** (`E:\TerrainTool\datasets\local_datasets.json`):
+local_raster entries. Fields: path, coverage, resolution_m, epsg, nodata, nodata_fill, type, dsm, priority.
 
-Current entry: **FO-DEM**
-```json
-{
-  "FO-DEM": {
-    "path": "E:\\TerrainTool\\datasets\\faroe_islands\\FO_DSM_2015_FOTM_2M.tif",
-    "coverage": "E:\\TerrainTool\\datasets\\faroe_islands\\faroe_islands_coverage.geojson",
-    "resolution_m": 2,
-    "epsg": 5316,
-    "nodata": 3.3999999521443642e+38,
-    "nodata_fill": "zero",
-    "type": "local_raster",
-    "dsm": true
-  }
-}
-```
+**api_datasets.json** (`E:\TerrainTool\datasets\api_datasets.json`) — NOT YET CREATED:
+api_wcs and api_tiled entries. Fields: endpoint/bucket, coverage, resolution_m, crs, nodata, type, dsm, priority.
+Type-specific fields: `wcs_layer` for api_wcs; `stac_catalog_url` for api_tiled.
+
+Priority integers must stay in sync between both files and the widget.
+
+## Dataset Types
+
+| Type | Status | Examples |
+|------|--------|---------|
+| local_raster | FO-DEM complete | FO-DEM, BE-merged (planned), LU (planned) |
+| api_wcs | Not yet built | NL-AHN4, NO-DOM, DK-DHM |
+| api_tiled | Not yet built | ArcticDEM, NZ-DSM, EN-EA |
+| LiDAR pipeline | Not yet built | SE-LiDAR, US-3DEP |
 
 ## ⚠ Critical: Exact Float for nodata
 
-Use the exact value `3.3999999521443642e+38` — NOT the rounded `3.4e+38`.
-Rounded value causes GDAL to fail to match nodata pixels during warp.
-Use `repr(nodata_value)` in all subprocess string interpolation.
+FO-DEM: `3.3999999521443642e+38` — NOT `3.4e+38`.
+Use `repr(nodata_value)` in all subprocess strings.
 
 ## nodata_fill Field
 
-| Value | When to use | What it does |
-|-------|-------------|--------------|
-| "zero" | Island/coastal DEMs (Faroe Islands) | Replaces nodata with 0.0, sets band nodata to 0.0. Ocean = sea level. |
-| "interpolate" | Land DEMs with scan gaps | Calls gdal_fillnodata via Module 2 run_fillnodata. |
+| Value | When | What |
+|-------|------|------|
+| "zero" | Coastal/island DEMs | Replace nodata with 0.0, set band nodata to 0.0 |
+| "interpolate" | Land DEMs with scan gaps | Call gdal_fillnodata |
 
-FO-DEM uses "zero" — ocean areas become sea level, not interpolated guesswork.
+FO-DEM uses "zero". Land datasets (NL-AHN4, NO-DOM, etc.) will use "interpolate".
 
-## ⚠ resample.py Guard (in Module 3)
+## ⚠ resample.py Guard
 
-resample.py has a guard: if band nodata == 0.0, skip gdal.FillNodata.
-Reason: 0.0 is valid sea level elevation for coastal/island DEMs.
-Without this guard, fill_nodata re-interpolates the correctly zero-filled ocean
-pixels, creating jagged coastline artefacts in Blender.
+If band nodata == 0.0, skip gdal.FillNodata entirely. 0.0 = valid sea level.
 
 ## local_clip.py Pipeline
 
-1. Read bbox from params.json
-2. Look up dataset in local_datasets.json (key from params.json dataset field)
-3. gdalwarp via QGIS subprocess: reproject to EPSG:4326, crop to bbox, float32
-   — srcNodata=repr(nodata_value) for full float precision
-   — dstNodata=-9999.0
-4. Branch on nodata_fill:
-   - "zero": replace nodata (-9999) with 0.0, set band nodata to 0.0
-   - "interpolate": call Module 2's run_fillnodata
-5. Write raw_dem.tif to local order folder
-6. Write processing_status: "ready" to params.json
+1. Read bbox from params.json, look up dataset in local_datasets.json
+2. gdalwarp via QGIS subprocess: reproject to EPSG:4326, crop to bbox, float32
+   srcNodata=repr(nodata_value), dstNodata=-9999.0
+3. Branch on nodata_fill: "zero" → replace with 0.0; "interpolate" → run_fillnodata
+4. Write raw_dem.tif, set processing_status: "ready"
 
-QGIS Python: C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat
-Never import osgeo directly.
+All GDAL via: `C:\Program Files\QGIS 3.44.8\bin\python-qgis-ltr.bat`
 
-## Integration
+## Priority & Selection
 
-- Module 2 acquire.py: four-line filter skips non-GLO-30 orders
-- Module 3 LoadOrder: blocks if processing_status is 'pending_lidar_review' or
-  'needs_manual_processing' — absent or 'ready' proceeds
-- Operator tool: Download DEM routes to acquire_extended.py for non-GLO-30
-- webhook.py: reads dataset from Shopify line item properties, defaults to 'GLO-30'
+iterate all datasets in priority order → use first one whose coverage polygon fully contains the order bbox.
+Cross-border (no single dataset covers bbox): flag needs_manual_processing, save raw_dem_primary.tif + raw_dem_secondary.tif. Operator merges → raw_dem.tif. Next Refresh promotes status.
 
-## Future: Lantmäteriet Laserdata Skog
+## Next: NL-AHN4 (first api_wcs)
 
-CC0, free via FTP. Will add nodata_fill: "interpolate" (land DEM, not coastal).
-Requires tile download, mandatory QGIS point cloud review, lidar_review.py.
+Create api_datasets.json, add NL-AHN4 entry:
+- Endpoint: https://service.pdok.nl/rws/ahn/wcs/v1_0
+- Coverage: dsm_05m, EPSG:28992, nodata 3.4028235e+38, CC-0
+- Reproject order bbox to EPSG:28992 before WCS request

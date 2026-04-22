@@ -1,0 +1,16 @@
+{
+  "ArcticDEM": {
+    "description": "ArcticDEM mosaic v4.1, 2m resolution, Arctic region",
+    "stac_api_url": "https://stac.pgc.umn.edu/api/v1/",
+    "stac_collection": "arcticdem-mosaics-v4.1-2m",
+    "stac_asset_key": "dem",
+    "coverage": "E:\\TerrainTool\\datasets\\arcticdem\\arcticdem_coverage.geojson",
+    "resolution_m": 2,
+    "epsg": 3413,
+    "nodata": -9999.0,
+    "nodata_fill": "interpolate",
+    "type": "api_tiled",
+    "dsm": true,
+    "priority": 1
+  }
+}
