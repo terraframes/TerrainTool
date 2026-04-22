@@ -55,7 +55,7 @@ print("  Packages installed — OK")
 
 step("Verifying imports")
 missing = []
-for pkg in ("googleapiclient", "google.auth", "requests"):
+for pkg in ("googleapiclient", "google.auth", "requests", "pystac_client"):
     if importlib.util.find_spec(pkg.split(".")[0]) is None:
         missing.append(pkg)
 if missing:

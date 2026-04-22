@@ -1,9 +1,12 @@
 [
-  { "emoji": "🌍", "region": "Arctic (≥60°N)", "status": "Full mosaic coverage", "source": ["Polar Geospatial Center"] },
-  {
-    "emoji": "🇫🇴",
-    "region": "Faroe Islands",
-    "status": "Full coverage",
-    "source": ["Umhvørvisstovan"]
-  }
+  { "emoji": "🇨🇦", "region": "Canada", "status": "40% (≥60°N)", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇫🇴", "region": "Faroe Islands", "status": "Full coverage", "source": ["Umhvørvisstovan"] },
+  { "emoji": "🇫🇮", "region": "Finland", "status": "Full coverage", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇬🇱", "region": "Greenland", "status": "Full coverage", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇮🇸", "region": "Iceland", "status": "Full coverage", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇳🇴", "region": "Norway", "status": "85% (≥60°N)", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇷🇺", "region": "Russia", "status": "51% (≥60°N)", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇸🇪", "region": "Sweden", "status": "68% (≥60°N)", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇺🇸", "region": "United States", "status": "Alaska only", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇬🇧", "region": "United Kingdom", "status": "Shetlands only", "source": ["Polar Geospatial Center"] }
 ]
