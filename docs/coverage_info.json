@@ -4,6 +4,7 @@
   { "emoji": "🇫🇮", "region": "Finland", "status": "Full coverage", "source": ["Polar Geospatial Center"] },
   { "emoji": "🇬🇱", "region": "Greenland", "status": "Full coverage", "source": ["Polar Geospatial Center"] },
   { "emoji": "🇮🇸", "region": "Iceland", "status": "Full coverage", "source": ["Polar Geospatial Center"] },
+  { "emoji": "🇱🇺", "region": "Luxembourg", "status": "Full coverage", "source": ["ANA"] },
   { "emoji": "🇳🇴", "region": "Norway", "status": "85% (≥60°N)", "source": ["Polar Geospatial Center"] },
   { "emoji": "🇷🇺", "region": "Russia", "status": "51% (≥60°N)", "source": ["Polar Geospatial Center"] },
   { "emoji": "🇸🇪", "region": "Sweden", "status": "68% (≥60°N)", "source": ["Polar Geospatial Center"] },

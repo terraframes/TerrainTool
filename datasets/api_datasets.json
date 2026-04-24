@@ -10,7 +10,6 @@
     "nodata": -9999.0,
     "nodata_fill": "interpolate",
     "type": "api_tiled",
-    "dsm": true,
-    "priority": 1
+    "dsm": true
   }
 }

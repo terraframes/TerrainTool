@@ -7,11 +7,12 @@
   'use strict';
 
   window._currentDataset = 'GLO-30';
+  window._currentProvider = 'Copernicus';
   window._selectionInvalid = false;
   window._coveragePolygons = [];
 
   var SNAP_LIST = [
-    2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9,
+    2.5, 2.6, 2.7, 2.8, 2.9,
     3.0, 3.2, 3.4, 3.6, 3.8,
     4.0, 4.2, 4.4, 4.6, 4.8,
     5, 6, 7, 8, 9, 10,
@@ -30,6 +31,7 @@
   var _isDragging = false;
   var _insideCoverage = false;
   var _coverageReady = false;
+  var _datasetLookup = {};
   var _map = null;
   var sliderEl = null;
   var _lockFeedbackActive = false;
@@ -38,6 +40,14 @@
   window.getDatasetForCurrentSelection = function () {
     return window._currentDataset || 'GLO-30';
   };
+
+  function _setDataset(key) {
+    window._currentDataset = key;
+    var entry = _datasetLookup[key];
+    window._currentProvider = entry ? entry.provider : 'Copernicus';
+    var lbl = document.getElementById('data-source-label');
+    if (lbl) lbl.textContent = window._currentProvider;
+  }
 
   function snapIndexToTrackPct(idx) {
     if (idx <= thresholdIndex) {
@@ -247,11 +257,11 @@
 
     if (matchedDataset) {
       _insideCoverage = true;
-      window._currentDataset = matchedDataset;
+      _setDataset(matchedDataset);
       _applyClearState();
     } else {
       _insideCoverage = false;
-      window._currentDataset = 'GLO-30';
+      _setDataset('GLO-30');
       if (window._currentAreaKm < HIGH_RES_THRESHOLD_KM) {
         _applyInvalidState();
       } else {
@@ -288,40 +298,48 @@
   window.initCoverage = function (map) {
     _map = map;
 
-    var DATASETS = [
-      { key: 'ArcticDEM', geojson: 'arcticdem_coverage.geojson' },
-      { key: 'FO-DEM',    geojson: 'faroe_islands_coverage.geojson' }
-    ];
+    fetch('datasets.json')
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status + ' fetching datasets.json');
+        return res.json();
+      })
+      .then(function (registry) {
+        registry.forEach(function (entry) { _datasetLookup[entry.key] = entry; });
+        var DATASETS = registry.slice().sort(function (a, b) { return a.priority - b.priority; });
 
-    var fetches = DATASETS.map(function (ds) {
-      return fetch(ds.geojson)
-        .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status + ' fetching ' + ds.geojson);
-          return res.json();
-        })
-        .then(function (geojson) {
-          var features = [];
-          if (geojson.type === 'FeatureCollection') {
-            features = geojson.features;
-          } else if (geojson.type === 'Feature') {
-            features = [geojson];
-          } else {
-            features = [{ type: 'Feature', geometry: geojson, properties: {} }];
-          }
-          features.forEach(function (feature) {
-            window._coveragePolygons.push({ dataset: ds.key, geojson: feature });
-          });
-          console.log('Coverage: loaded ' + features.length + ' polygon(s) for ' + ds.key);
-        })
-        .catch(function (err) {
-          console.error('Coverage: failed to load ' + ds.geojson + ' —', err.message);
+        var fetches = DATASETS.map(function (ds) {
+          return fetch(ds.geojson)
+            .then(function (res) {
+              if (!res.ok) throw new Error('HTTP ' + res.status + ' fetching ' + ds.geojson);
+              return res.json();
+            })
+            .then(function (geojson) {
+              var features = [];
+              if (geojson.type === 'FeatureCollection') {
+                features = geojson.features;
+              } else if (geojson.type === 'Feature') {
+                features = [geojson];
+              } else {
+                features = [{ type: 'Feature', geometry: geojson, properties: {} }];
+              }
+              features.forEach(function (feature) {
+                window._coveragePolygons.push({ dataset: ds.key, geojson: feature });
+              });
+              console.log('Coverage: loaded ' + features.length + ' polygon(s) for ' + ds.key);
+            })
+            .catch(function (err) {
+              console.error('Coverage: failed to load ' + ds.geojson + ' —', err.message);
+            });
         });
-    });
 
-    Promise.all(fetches).then(function () {
-      _coverageReady = true;
-      _runCoverageCheck();
-    });
+        Promise.all(fetches).then(function () {
+          _coverageReady = true;
+          _runCoverageCheck();
+        });
+      })
+      .catch(function (err) {
+        console.error('Coverage: failed to load datasets.json —', err.message);
+      });
 
     initSlider();
 

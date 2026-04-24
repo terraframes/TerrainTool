@@ -1,67 +1,67 @@
 # Current Work State
 
 ## Active Module
-No active build. Next: offline QGIS pre-processing (LU, BE) or widget bbox upgrade.
+**Module 2b — NL-AHN4 (first api_wcs dataset)**
 
 ## What Is Built
 
 ### Module 4 — COMPLETE
 ### Module 3 — COMPLETE
 ### Module 2 — COMPLETE
-### Module 2b — COMPLETE (FO-DEM local_raster)
-### Module 1 — Stages 1–3 + slider built
+### Module 2b
+- FO-DEM (local_raster): COMPLETE
+- ArcticDEM (api_tiled): COMPLETE
+  - acquire_tiled.py: STAC query, vsicurl VRT, gdalwarp, VRT cleanup
+  - api_datasets.json created
+  - acquire_extended.py updated: loads both registries, routes by type
+  - pystac-client added to requirements.txt
+### Module 1
+- Stages 1–3 + slider + full bbox containment + coverage modal + multi-dataset priority loop
+- ArcticDEM GeoJSON built and live
+- Coverage system fully live with FO-DEM + ArcticDEM
 ### Operator Tool — Full end-to-end working
 
-## Dataset Architecture Decisions Made
+## Key Lessons from ArcticDEM Implementation
 
-- Priority register finalised (see root CLAUDE.md)
-- Two registry files: local_datasets.json (exists) + api_datasets.json (to create)
-- Offline pre-processing for LU and BE: local_raster entries, one-time QGIS work
-- Tiled local datasets (SE if LiDAR not yet built): 100×100km tiles, SW corner naming convention
-- Priority integers must stay in sync between both registries and widget
+- vsicurl: passes GDAL HTTP config vars in subprocess; s3:// → https:// URL conversion needed
+- gdal.BuildVRT (capital V) — BuildVrt does not exist, throws AttributeError
+- Coverage GeoJSON must be FeatureCollection of Polygon features — NOT MultiPolygon
+  (turf.booleanContains throws AttributeError on MultiPolygon)
+- Dissolve tile indexes in EPSG:4326, NOT in polar CRS (antimeridian wrapping)
+- Pre-simplify coverage GeoJSONs before deployment (complex polygons = unusable map)
+- _coverageReady flag in coverage.js is essential — guards all coverage check entry points
+  until Promise.all fetches complete (without it: feedback loop on slider init)
 
-## Immediate Next Steps
+## Next: NL-AHN4 (first api_wcs)
 
-### Option A: Offline pre-processing (no code changes needed)
-1. Luxembourg: download source, rasterise/reproject/compress → LU_2m_merged.tif
-   Add entry to local_datasets.json with priority=18
-2. Belgium: download Flanders + Wallonia + Brussels, mosaic → BE_2m_merged.tif
-   Add entry to local_datasets.json with priority=17
-3. Denmark: assess local_raster vs api_wcs based on file size
+Add to api_datasets.json:
+```json
+"NL-AHN4": {
+  "wcs_url": "https://service.pdok.nl/rws/ahn/wcs/v1_0",
+  "wcs_layer": "dsm_05m",
+  "coverage": "E:\\TerrainTool\\datasets\\nl\\nl_coverage.geojson",
+  "resolution_m": 0.5, "epsg": 28992,
+  "nodata": 3.4028235e+38,
+  "nodata_fill": "interpolate",
+  "type": "api_wcs", "dsm": true, "priority": 11
+}
+```
 
-### Option B: Widget bbox upgrade (prerequisite for NZ-DSM + multi-dataset)
-1. Compute bbox live in coverage.js on every map move + slider change
-2. Switch to turf.booleanContains(coveragePolygon, bboxPolygon)
-3. Load all coverage GeoJSONs on init, iterate in priority order
-4. Display winning dataset name in UI
-5. Write winning dataset to confirm payload (no recomputation)
+Build acquire_wcs.py handler. Add Netherlands coverage GeoJSON to widget /docs/.
+Author NL coverage GeoJSON in QGIS (simple country outline, ~500m tolerance, EPSG:4326).
 
-### Option C: First api_wcs dataset (NL-AHN4)
-- Create api_datasets.json
-- Build api_wcs handler in acquire_extended.py
-- WCS endpoint: https://service.pdok.nl/rws/ahn/wcs/v1_0
-- Coverage: dsm_05m, EPSG:28992, nodata 3.4028235e+38, CC-0
+## Remaining Work
 
-## Research Still Required
+### Module 2b datasets
+- Offline QGIS: LU, BE (one QGIS session each)
+- api_wcs: NL-AHN4 → NO-DOM → DK-DHM
+- api_tiled: NZ-DSM, EN-EA (bbox check already done in widget)
+- LiDAR pipeline: SE-LiDAR + US-3DEP bundle
 
-- NO-DOM: confirm DSM (not DTM) endpoint; confirm CC-BY-4.0 for commercial derived products
-- EN-EA: confirm OGL commercial use; confirm programmatic tile access still works
-- DK-DHM: set up Datafordeler API key before June 2026 web login phaseout
-- BE-DHMV: confirm Wallonia + Brussels available for mosaic
-- CZ-DMP, ES-PNOA, FI-MML, LU-LIDAR: confirm commercial licence
-- Switzerland, France: likely blocked — verify
-- Scotland/Wales: confirm same EA pattern as England
-- NZ coverage GeoJSON: author in QGIS before NZ-DSM launches
-
-## Remaining Operator Tool Work
-
+### Operator Tool
 - Status auto-refresh after Blender closes
-- Manual order entry
-- Archive tab
-- PyInstaller .exe
 - Headless Blender export (--background)
-- Show which dataset was used per order (useful once multi-dataset live)
-- Dataset column width (80 → 110px, cosmetic)
+- Manual order entry, archive tab, PyInstaller .exe
 
 ---
 *Update this file at the end of every Claude Code session.*

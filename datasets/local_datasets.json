@@ -8,5 +8,15 @@
     "resolution_m": 2,
     "type": "local_raster",
     "dsm": true
+  },
+  "LU-DEM": {
+    "description": "Luxembourg national DSM, 2m resolution",
+    "files": ["E:\\TerrainTool\\datasets\\luxembourg\\Luxembourg_DEM.tif"],
+    "nodata_value": -32767,
+    "nodata_fill": "interpolate",
+    "coverage": "E:\\TerrainTool\\datasets\\luxembourg\\luxembourg_coverage.geojson",
+    "resolution_m": 2,
+    "type": "local_raster",
+    "dsm": true
   }
 }
