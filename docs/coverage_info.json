@@ -1,4 +1,5 @@
 [
+  { "emoji": "🇧🇪", "region": "Belgium", "status": "Full coverage", "source": ["Digitaal Vlaanderen, SPW & urban.brussels"] },
   { "emoji": "🇨🇦", "region": "Canada", "status": "40% (≥60°N)", "source": ["Polar Geospatial Center"] },
   { "emoji": "🇫🇴", "region": "Faroe Islands", "status": "Full coverage", "source": ["Umhvørvisstovan"] },
   { "emoji": "🇫🇮", "region": "Finland", "status": "Full coverage", "source": ["Polar Geospatial Center"] },

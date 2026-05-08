@@ -2,5 +2,6 @@
   { "key": "FO-DEM",    "priority": 1,  "geojson": "faroe_islands_coverage.geojson", "provider": "Umhvørvistvovan" },
   { "key": "ArcticDEM", "priority": 10,  "geojson": "arcticdem_coverage.geojson", "provider": "Polar Geospatial Center" },
   { "key": "LU-DEM",    "priority": 1,  "geojson": "luxembourg_coverage.geojson", "provider": "ANA" },
+  { "key": "BE-DEM",    "priority": 2,  "geojson": "belgium_coverage.geojson", "provider": "Digitaal Vlaanderen - SPW - urban.brussels" },
   { "key": "GLO-30",    "priority": 99, "geojson": null, "provider": "Copernicus" }
 ]
