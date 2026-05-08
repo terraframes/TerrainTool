@@ -255,25 +255,7 @@
     var center = _map.getCenter();
     var bboxPolygon = _getBboxPolygon(center, window._currentAreaKm);
 
-    // Collect all datasets that fully contain the bbox
-    var matchedDatasets = [];
-    window._coveragePolygons.forEach(function (entry) {
-      if (turf.booleanContains(entry.geojson, bboxPolygon)) {
-        if (matchedDatasets.indexOf(entry.dataset) === -1) {
-          matchedDatasets.push(entry.dataset);
-        }
-      }
-    });
-
-    if (matchedDatasets.length > 0) {
-      // Fully inside one or more coverage polygons
-      _insideCoverage = true;
-      _setDataset(matchedDatasets);
-      _applyClearState();
-    } else {
-      // No single polygon fully contains the bbox.
-      // Check if it straddles multiple polygons by testing intersection.
-      var overlapping = [];
+    var overlapping = [];
       window._coveragePolygons.forEach(function (entry) {
         if (turf.booleanIntersects(entry.geojson, bboxPolygon)) {
           if (overlapping.indexOf(entry.dataset) === -1) {
@@ -282,22 +264,21 @@
         }
       });
 
-      if (overlapping.length > 1) {
-        // Cross-border — bbox spans two datasets, high-res still valid
-        _insideCoverage = true;
-        _setDataset(overlapping);
-        _applyClearState();
+      if (overlapping.length === 0) {
+      _insideCoverage = false;
+      _setDataset(['GLO-30']);
+      if (window._currentAreaKm < HIGH_RES_THRESHOLD_KM) {
+        _applyInvalidState();
       } else {
-        // Genuinely outside all coverage
-        _insideCoverage = false;
-        _setDataset(['GLO-30']);
-        if (window._currentAreaKm < HIGH_RES_THRESHOLD_KM) {
-          _applyInvalidState();
-        } else {
-          _applyClearState();
-        }
+        _applyClearState();
       }
+    } else {
+      _insideCoverage = true;
+      _setDataset(overlapping);
+      _applyClearState();
     }
+      
+    
     updateGreyOverlay();
     updateSegmentColours();
   }
