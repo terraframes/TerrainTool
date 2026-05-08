@@ -41,13 +41,18 @@
     return window._currentDataset || 'GLO-30';
   };
 
-  function _setDataset(key) {
-    window._currentDataset = key;
-    var entry = _datasetLookup[key];
-    window._currentProvider = entry ? entry.provider : 'Copernicus';
-    var lbl = document.getElementById('data-source-label');
-    if (lbl) lbl.textContent = window._currentProvider;
+  function _setDataset(keys) {
+  // keys: array of dataset keys, e.g. ['LU-DEM', 'BE-DEM'] or ['GLO-30']
+  if (!Array.isArray(keys)) keys = [keys];
+  window._currentDataset = keys[0];
+  var lbl = document.getElementById('data-source-label');
+  if (lbl) {
+    lbl.innerHTML = keys.map(function (k) {
+      var entry = _datasetLookup[k];
+      return entry ? entry.provider : k;
+    }).join('<br>');
   }
+}
 
   function snapIndexToTrackPct(idx) {
     if (idx <= thresholdIndex) {
@@ -248,24 +253,48 @@
     if (!_map || !_coverageReady) return;
     var center = _map.getCenter();
     var bboxPolygon = _getBboxPolygon(center, window._currentAreaKm);
-    var matchedDataset = null;
+
+    // Collect all datasets that fully contain the bbox
+    var matchedDatasets = [];
     window._coveragePolygons.forEach(function (entry) {
-      if (!matchedDataset && turf.booleanContains(entry.geojson, bboxPolygon)) {
-        matchedDataset = entry.dataset;
+      if (turf.booleanContains(entry.geojson, bboxPolygon)) {
+        if (matchedDatasets.indexOf(entry.dataset) === -1) {
+          matchedDatasets.push(entry.dataset);
+        }
       }
     });
 
-    if (matchedDataset) {
+    if (matchedDatasets.length > 0) {
+      // Fully inside one or more coverage polygons
       _insideCoverage = true;
-      _setDataset(matchedDataset);
+      _setDataset(matchedDatasets);
       _applyClearState();
     } else {
-      _insideCoverage = false;
-      _setDataset('GLO-30');
-      if (window._currentAreaKm < HIGH_RES_THRESHOLD_KM) {
-        _applyInvalidState();
-      } else {
+      // No single polygon fully contains the bbox.
+      // Check if it straddles multiple polygons by testing intersection.
+      var overlapping = [];
+      window._coveragePolygons.forEach(function (entry) {
+        if (turf.booleanIntersects(entry.geojson, bboxPolygon)) {
+          if (overlapping.indexOf(entry.dataset) === -1) {
+            overlapping.push(entry.dataset);
+          }
+        }
+      });
+
+      if (overlapping.length > 1) {
+        // Cross-border — bbox spans two datasets, high-res still valid
+        _insideCoverage = true;
+        _setDataset(overlapping);
         _applyClearState();
+      } else {
+        // Genuinely outside all coverage
+        _insideCoverage = false;
+        _setDataset(['GLO-30']);
+        if (window._currentAreaKm < HIGH_RES_THRESHOLD_KM) {
+          _applyInvalidState();
+        } else {
+          _applyClearState();
+        }
       }
     }
     updateGreyOverlay();
