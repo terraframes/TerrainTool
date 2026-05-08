@@ -87,7 +87,7 @@
     }]
   };
 
-  fetch('https://terraintool-production.up.railway.app/webhook', {
+  fetch('https://terraintool.onrender.com/webhook', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(shopifyPayload)

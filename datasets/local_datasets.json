@@ -18,5 +18,15 @@
     "resolution_m": 2,
     "type": "local_raster",
     "dsm": true
+  },
+  "BE-DEM": {
+    "description": "Wallonia, Flanders, Brussels DSM, 2m resolution",
+    "files": ["E:\\TerrainTool\\datasets\\belgium\\belgium_dem_2m.tif"],
+    "nodata_value": -9999,
+    "nodata_fill": "zero",
+    "coverage": "E:\\TerrainTool\\datasets\\belgium\\belgium_coverage.geojson",
+    "resolution_m": 2,
+    "type": "local_raster",
+    "dsm": true
   }
 }
