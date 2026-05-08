@@ -45,6 +45,7 @@
   // keys: array of dataset keys, e.g. ['LU-DEM', 'BE-DEM'] or ['GLO-30']
   if (!Array.isArray(keys)) keys = [keys];
   window._currentDataset = keys[0];
+  window._currentDatasets = keys;
   var lbl = document.getElementById('data-source-label');
   if (lbl) {
     lbl.innerHTML = keys.map(function (k) {

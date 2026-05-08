@@ -51,7 +51,8 @@
         center_lat:    +center.lat.toFixed(6),
         center_lon:    +center.lng.toFixed(6),
         area_km:       getAreaKm(),
-        dataset:       (window.getDatasetForCurrentSelection ? window.getDatasetForCurrentSelection() : 'GLO-30'),
+        dataset:    (window._currentDatasets && window._currentDatasets.length > 0 ? window._currentDatasets[0] : 'GLO-30'),
+        processing_status: (window._currentDatasets && window._currentDatasets.length > 1 ? 'needs_manual_processing' : 'ready'),
         print_size_mm: 200
       };
 
@@ -82,7 +83,8 @@
         { name: 'min_lon', value: String(lastPayload.bbox.min_lon) },
         { name: 'max_lon', value: String(lastPayload.bbox.max_lon) },
         { name: 'area_km', value: String(lastPayload.area_km) },
-        { name: 'dataset', value: lastPayload.dataset }
+        { name: 'dataset', value: lastPayload.dataset },
+        { name: 'processing_status', value: lastPayload.processing_status }
       ]
     }]
   };
