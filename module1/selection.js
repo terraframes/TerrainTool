@@ -83,6 +83,7 @@
         { name: 'min_lon', value: String(lastPayload.bbox.min_lon) },
         { name: 'max_lon', value: String(lastPayload.bbox.max_lon) },
         { name: 'area_km', value: String(lastPayload.area_km) },
+        { name: 'datasets', value: (window._currentDatasets || ['GLO-30']).join(',') },
         { name: 'dataset', value: lastPayload.dataset },
         { name: 'processing_status', value: lastPayload.processing_status }
       ]

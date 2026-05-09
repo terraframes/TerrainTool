@@ -210,6 +210,7 @@ def webhook():
     # Parse numeric values
     dataset = props.get("dataset", "GLO-30")
     processing_status = props.get("processing_status", "ready")
+    datasets = [d.strip() for d in props.get("datasets", dataset).split(",") if d.strip()]
     try:
         min_lat = float(props["min_lat"])
         max_lat = float(props["max_lat"])
@@ -233,6 +234,7 @@ def webhook():
         "center_lon": (min_lon + max_lon) / 2,
         "area_km": area_km,
         "dataset": dataset,
+        "datasets": datasets,
         "processing_status": processing_status,
         "dem_resolution_m": 30,
         "elevation_min_m": 0.0,
